@@ -204,6 +204,12 @@ trait GraphQL[-R] { self =>
     override protected val wrappers: List[Wrapper[R]]              = self.wrappers
     override protected val additionalDirectives: List[__Directive] = self.additionalDirectives
   }
+
+  final def withDirectives(directives: List[__Directive]): GraphQL[R] = new GraphQL[R] {
+    override protected val schemaBuilder: RootSchemaBuilder[R]     = self.schemaBuilder
+    override protected val wrappers: List[Wrapper[R]]              = self.wrappers
+    override protected val additionalDirectives: List[__Directive] = self.additionalDirectives ++ directives
+  }
 }
 
 object GraphQL {
