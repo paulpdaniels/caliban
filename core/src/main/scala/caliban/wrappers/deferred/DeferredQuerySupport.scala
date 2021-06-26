@@ -1,8 +1,8 @@
 package caliban.wrappers.deferred
 
-import caliban.introspection.adt.{ __Directive, __DirectiveLocation, __InputValue }
+import caliban.introspection.adt.{__Directive, __DirectiveLocation, __InputValue}
 import caliban.schema.Types
-import caliban.GraphQL
+import caliban.{GraphQL, GraphQLInterpreter}
 
 trait DeferredQuerySupport {
 

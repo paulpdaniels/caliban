@@ -31,7 +31,9 @@ private[deferred] object DeferredQueries {
   private case class DeferredPayload(
     label: String,
     path: List[Either[String, Int]],
-    data: ResponseValue
+    data: ResponseValue,
+    errors: List[ObjectValue] = Nil,
+    extensions: Option[ObjectValue] = None
   ) {
     def toResponseValue(hasNext: Boolean): ResponseValue =
       ObjectValue(
@@ -39,7 +41,9 @@ private[deferred] object DeferredQueries {
           "label"   -> StringValue(label),
           "path"    -> ListValue(path.map(_.fold(StringValue, IntValue(_)))),
           "data"    -> data,
-          "hasNext" -> BooleanValue(hasNext)
+          "hasNext" -> BooleanValue(hasNext),
+          "errors" -> ListValue(errors),
+          "extensions" -> extensions.getOrElse(NullValue)
         )
       )
   }
