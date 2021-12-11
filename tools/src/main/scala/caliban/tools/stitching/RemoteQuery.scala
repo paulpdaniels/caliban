@@ -6,6 +6,7 @@ import caliban.Value._
 import caliban.InputValue._
 import caliban.Value.FloatValue._
 import caliban.Value.IntValue._
+import caliban.rendering.{ AstRenderer, RenderingOptions }
 
 case class RemoteQuery(field: Field) { self =>
   def toGraphQLRequest: GraphQLRequest =
@@ -27,48 +28,82 @@ case class RemoteMutation(field: Field) { self =>
 
 object RemoteQuery {
   object QueryRenderer {
-    def render(r: RemoteMutation): String = s"mutation { ${renderField(r.field)} }"
-    def render(r: RemoteQuery): String    = s"query { ${renderField(r.field)} }"
+    private def withConditionRenderer(renderer: AstRenderer[Field]): AstRenderer[Field] =
+      (in: Field, out: StringBuilder, opts: RenderingOptions) =>
+        in.condition.fold(renderer.render(in, out, opts)) {
+          _.foreach { cond =>
+            out
+              .append("... on ")
+              .append(cond)
+              .append(" { ")
+            renderer.render(in, out, opts)
+            out.append(" }")
+          }
+        }
 
-    private def renderField(field: Field): String = {
-      val children = renderFields(field)
-      val args     = renderArguments(field.arguments)
-      val alias    = field.alias.map(a => s"$a: ").getOrElse("")
-      val str      = s"$alias${field.name}$args$children"
-
-      withCondition(field)(str)
+    private lazy val fieldRenderer: AstRenderer[Field] = (in: Field, out: StringBuilder, opt: RenderingOptions) => {
+      in.alias.foreach(a => out.append(a).append(':').append(' '))
+      out.append(in.name)
+      in.arguments.map { case (k, v) =>
+        val b = new StringBuilder(k).append(':').append(' ')
+        inputValueRenderer.render(v, b, opt)
+        b
+      }.addString(out, "(", ", ", ")")
+      in.fields.addString(out, " { ", " ", " }")
     }
 
-    private def withCondition(f: Field)(inner: String): String =
-      f.condition.flatMap(_.headOption).map(x => s"...on $x { $inner }").getOrElse(inner)
+    private lazy val inputValueRenderer: AstRenderer[InputValue] =
+      (in: InputValue, out: StringBuilder, opt: RenderingOptions) =>
+        in match {
+          case StringValue(value)      => out.append('"').append(value).append('"')
+          case ListValue(values)       =>
+            values.map { v =>
+              val b = new StringBuilder()
+              inputValueRenderer.render(v, b, opt)
+              b
+            }.addString(out, "[", ",", "]")
+          case ObjectValue(fields)     =>
+            fields.map { case (k, v) =>
+              val b = new StringBuilder(k).append(':').append(' ')
+              inputValueRenderer.render(v, b, opt)
+              b
+            }.addString(out, "{ ", ", ", " }")
+          case NullValue               => out.append("null")
+          case VariableValue(name)     => out.append('$').append(name)
+          case BigDecimalNumber(value) => out.append(value)
+          case BigIntNumber(value)     => out.append(value)
+          case BooleanValue(value)     => out.append(value)
+          case DoubleNumber(value)     => out.append(value)
+          case EnumValue(value)        => out.append(value)
+          case FloatNumber(value)      => out.append(value)
+          case IntNumber(value)        => out.append(value)
+          case LongNumber(value)       => out.append(value)
+        }
 
-    private def renderInputValue(v: InputValue): String =
-      v match {
-        case StringValue(value)      => s""""$value""""
-        case ListValue(values)       => values.map(renderInputValue).mkString("[", ",", "]")
-        case ObjectValue(fields)     =>
-          fields.map { case (k, v) => s"""$k: ${renderInputValue(v)}""" }.mkString("{ ", ", ", " }")
-        case NullValue               => "null"
-        case VariableValue(name)     => s"$$$name"
-        case BigDecimalNumber(value) => s"$value"
-        case BigIntNumber(value)     => s"$value"
-        case BooleanValue(value)     => s"$value"
-        case DoubleNumber(value)     => s"$value"
-        case EnumValue(value)        => s"$value"
-        case FloatNumber(value)      => s"$value"
-        case IntNumber(value)        => s"$value"
-        case LongNumber(value)       => s"$value"
+    val mutationRenderer: AstRenderer[RemoteMutation] =
+      mutationRenderer(withConditionRenderer(fieldRenderer))
+
+    val queryRenderer: AstRenderer[RemoteQuery] =
+      queryRenderer(withConditionRenderer(fieldRenderer))
+
+    def mutationRenderer(fieldRenderer: AstRenderer[Field]): AstRenderer[RemoteMutation] =
+      (in: RemoteMutation, out: StringBuilder, opts: RenderingOptions) => {
+        out.append("mutation { ")
+        fieldRenderer.render(in.field, out, opts)
+        out.append(" }")
       }
 
-    private def renderFields(f: Field): String =
-      if (f.fields.isEmpty) ""
-      else
-        f.fields.map(renderField).mkString(" { ", " ", " }")
+    def queryRenderer(fieldRenderer: AstRenderer[Field]): AstRenderer[RemoteQuery] =
+      (in: RemoteQuery, out: StringBuilder, opts: RenderingOptions) => {
+        out.append("query { ")
+        fieldRenderer.render(in.field, out, opts)
+        out.append(" }")
+      }
 
-    private def renderArguments(args: Map[String, InputValue]): String =
-      if (args.isEmpty) ""
-      else
-        args.map { case (k, v) => s"$k: ${renderInputValue(v)}" }
-          .mkString("(", ", ", ")")
+    def render(r: RemoteMutation): String =
+      AstRenderer.render(r)(mutationRenderer)
+
+    def render(r: RemoteQuery): String =
+      AstRenderer.render(r)(queryRenderer)
   }
 }
