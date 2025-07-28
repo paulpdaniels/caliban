@@ -71,4 +71,9 @@ object Annotations extends AnnotationsVersionSpecific {
    * Annotation to make a sealed trait as a GraphQL @oneOf input
    */
   case class GQLOneOfInput() extends StaticAnnotation
+
+  /**
+   * Annotation that marks a field as an extension type of the outer type.
+   */
+  case class GQLExtend() extends StaticAnnotation
 }

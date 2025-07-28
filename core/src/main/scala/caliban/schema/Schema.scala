@@ -160,6 +160,22 @@ abstract class Schema[-R, T] { self =>
       if (renameTypename) loop(step) else step
     }
   }
+
+  def extend[R1 <: R, T1](that: Schema[R1, T1]): Schema[R1, (T, T1)] = new Schema[R1, (T, T1)] {
+    override def toType(isInput: Boolean, isSubscription: Boolean): __Type =
+      self.toType_(isInput, isSubscription).extend(that.toType_(isInput, isSubscription))
+
+    override def resolve(value: (T, T1)): Step[R1] =
+      Step.mergeRootSteps(that.resolve(value._2), self.resolve(value._1))
+  }
+
+  def extendWith[R1 <: R, T1](that: Schema[R1, T1])(f: T => T1): Schema[R1, T] = new Schema[R1, T] {
+    override def toType(isInput: Boolean, isSubscription: Boolean): __Type =
+      self.toType_(isInput, isSubscription).extend(that.toType_(isInput, isSubscription))
+
+    override def resolve(value: T): Step[R1] =
+      Step.mergeRootSteps(that.resolve(f(value)), self.resolve(value))
+  }
 }
 
 object Schema extends GenericSchema[Any] with SchemaVersionSpecific

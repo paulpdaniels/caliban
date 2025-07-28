@@ -23,6 +23,6 @@ private object ObjectFieldResolver {
   @static private val NullStepFn0: () => Any => Step[Any] = () => NullStepFn
 
   def apply[R, A](objectName: String, fields: Iterable[(String, A => Step[R])]): ObjectFieldResolver[R, A] =
-    // NOTE: mutable.HashMap is about twice as fast than immutable.HashMap for .get
+    // NOTE: mutable.HashMap is about twice as fast as immutable.HashMap for .get
     new ObjectFieldResolver(objectName, mutable.HashMap.from(fields))
 }

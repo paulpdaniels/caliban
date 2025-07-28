@@ -50,15 +50,16 @@ trait CommonSchemaDerivation[R] {
     }
 
   def join[T](ctx: ReadOnlyCaseClass[Typeclass, T]): Typeclass[T] = new Typeclass[T] {
+    private lazy val _isValueType     = DerivationUtils.isValueType(ctx)
+    private lazy val _isExtensionType = DerivationUtils.isExtended(ctx)
+
     private lazy val objectResolver =
       ObjectFieldResolver[R, T](
         getName(ctx),
-        ctx.parameters.map { p =>
+        ctx.parameters.filterNot(_.annotations.contains(GQLExtend())).map { p =>
           getName(p) -> { (v: T) => p.typeclass.resolve(p.dereference(v)) }
         }
       )
-
-    private lazy val _isValueType = DerivationUtils.isValueType(ctx)
 
     override def toType(isInput: Boolean, isSubscription: Boolean): __Type = {
       val _ = objectResolver // Initializes lazy val
@@ -95,7 +96,7 @@ trait CommonSchemaDerivation[R] {
           Some(getName(ctx)),
           getDescription(ctx),
           ctx.parameters
-            .filterNot(_.annotations.exists(_ == GQLExcluded()))
+            .filterNot(_.annotations.exists(a => a == GQLExcluded() || a == GQLExtend()))
             .map { p =>
               val (isNullable, isSemanticNonNull) = {
                 val hasNullableAnn = p.annotations.contains(GQLNullable())
@@ -126,21 +127,32 @@ trait CommonSchemaDerivation[R] {
             }
             .toList,
           getDirectives(ctx),
-          Some(ctx.typeName.full)
+          Some(ctx.typeName.full),
+          extensions = Some(ctx.parameters.collect {
+            case p if p.annotations.contains(GQLExtend()) =>
+              p.typeclass.toType_(isInput, isSubscription).copy(name = Some(getName(ctx)))
+          }.toList).filter(_.nonEmpty)
         )
     }
 
-    private lazy val enumValue = PureStep(EnumValue(getName(ctx)))
+    private lazy val enumValue  = PureStep(EnumValue(getName(ctx)))
+    private lazy val extensions = ctx.parameters.filter(_.annotations.contains(GQLExtend()))
 
     override def resolve(value: T): Step[R] =
       if (ctx.isObject) enumValue
       else if (_isValueType) resolveValueType(value)
+      else if (_isExtensionType) resolveExtendedType(value)
       else objectResolver.resolve(value)
 
     private def resolveValueType(value: T): Step[R] = {
       val head = ctx.parameters.head
       head.typeclass.resolve(head.dereference(value))
     }
+
+    private def resolveExtendedType(value: T): Step[R] =
+      extensions.foldLeft(objectResolver.resolve(value)) { (step, param) =>
+        Step.mergeRootSteps(step, param.typeclass.resolve(param.dereference(value)))
+      }
 
   }
 
@@ -180,14 +192,15 @@ trait CommonSchemaDerivation[R] {
         makeEnum(
           Some(getName(ctx)),
           getDescription(ctx),
-          subtypes.collect { case (__Type(_, Some(name), description, _, _, _, _, _, _, _, _, _, _), annotations) =>
-            __EnumValue(
-              name,
-              description,
-              annotations.collectFirst { case GQLDeprecated(_) => () }.isDefined,
-              annotations.collectFirst { case GQLDeprecated(reason) => reason },
-              Some(annotations.collect { case GQLDirective(dir) => dir }.toList).filter(_.nonEmpty)
-            )
+          subtypes.collect {
+            case (__Type(_, Some(name), description, _, _, _, _, _, _, _, _, _, _, extensions), annotations) =>
+              __EnumValue(
+                name,
+                description,
+                annotations.collectFirst { case GQLDeprecated(_) => () }.isDefined,
+                annotations.collectFirst { case GQLDeprecated(reason) => reason },
+                Some(annotations.collect { case GQLDirective(dir) => dir }.toList).filter(_.nonEmpty)
+              )
           },
           Some(ctx.typeName.full),
           Some(getDirectives(ctx.annotations))

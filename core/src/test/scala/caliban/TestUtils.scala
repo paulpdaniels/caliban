@@ -70,6 +70,16 @@ object TestUtils {
     role: Option[Role]
   ) extends Human
 
+  case class ExtendedCharacter1(
+    age: Option[Int]
+  )
+
+  @GQLExtend
+  case class CharacterWithExtended(
+    character: Character,
+    extension1: ExtendedCharacter1
+  )
+
   case class Narrator(
     name: String
   ) extends Human
@@ -133,6 +143,11 @@ object TestUtils {
     character: NameOrOrigin.Wrapper => List[Character]
   )
 
+  @GQLName("Query")
+  case class QueryWithExtension(
+    character: CharacterArgs => Option[CharacterWithExtended]
+  )
+
   @GQLDescription("Mutations")
   case class MutationIO(deleteCharacter: CharacterArgs => UIO[Unit])
 
@@ -177,6 +192,17 @@ object TestUtils {
     resolver.queryResolver,
     MutationIO(_ => ZIO.unit),
     SubscriptionIO(ZStream.empty)
+  )
+
+  val resolverWithExtended = RootResolver(
+    QueryWithExtension(args =>
+      characters.find(c => c.name == args.name).map { character =>
+        CharacterWithExtended(
+          character,
+          ExtendedCharacter1(Some(42))
+        )
+      }
+    )
   )
 
   object Directives {

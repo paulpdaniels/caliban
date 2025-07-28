@@ -48,7 +48,8 @@ object Types {
     fields: List[__Field],
     directives: List[Directive],
     origin: Option[String] = None,
-    interfaces: () => Option[List[__Type]] = () => Some(Nil)
+    interfaces: () => Option[List[__Type]] = () => Some(Nil),
+    extensions: Option[List[__Type]] = None
   ): __Type =
     __Type(
       __TypeKind.OBJECT,
@@ -58,7 +59,8 @@ object Types {
         args => if (args.includeDeprecated.getOrElse(false)) Some(fields) else Some(fields.filter(!_.isDeprecated)),
       interfaces = interfaces,
       directives = Some(directives),
-      origin = origin
+      origin = origin,
+      extensions = extensions
     )
 
   def makeField(

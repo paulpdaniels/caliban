@@ -415,6 +415,17 @@ object SchemaSpec extends ZIOSpecDefault {
                       |}
                       |""".stripMargin
         )
+      },
+      test("extend extending a schema - basic") {
+        case class Foo(hello: String)
+        case class FooExtended(world: String)
+        case class Query(value: (Foo, FooExtended))
+
+        val fooExtended                                         = Schema.gen[Any, FooExtended]
+        implicit val fooSchema: Schema[Any, (Foo, FooExtended)] = Schema.gen[Any, Foo].extend(fooExtended)
+        implicit val querySchema: Schema[Any, Query]            = Schema.gen[Any, Query]
+        val schema                                              = graphQL(RootResolver(Query(Foo("hello") -> FooExtended("world")))).render
+        assertTrue(schema == "bob")
       }
     )
 

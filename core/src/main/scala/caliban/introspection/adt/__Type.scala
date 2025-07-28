@@ -4,6 +4,7 @@ import caliban.Scala3Annotations.threadUnsafe
 import caliban.Value.StringValue
 import caliban.parsing.adt.Definition.TypeSystemDefinition.TypeDefinition
 import caliban.parsing.adt.Definition.TypeSystemDefinition.TypeDefinition._
+import caliban.parsing.adt.Definition.TypeSystemExtension
 import caliban.parsing.adt.Type.{ ListType, NamedType }
 import caliban.parsing.adt.{ Directive, Type }
 import caliban.rendering.DocumentRenderer
@@ -25,7 +26,8 @@ case class __Type(
   specifiedBy: Option[String] = None,
   @GQLExcluded directives: Option[List[Directive]] = None,
   @GQLExcluded origin: Option[String] = None,
-  isOneOf: Option[Boolean] = None
+  isOneOf: Option[Boolean] = None,
+  @GQLExcluded extensions: Option[List[__Type]] = None
 ) { self =>
   import caliban.syntax._
 
@@ -48,6 +50,11 @@ case class __Type(
     (directives ++ that.directives).reduceOption(_ ++ _),
     (origin ++ that.origin).reduceOption((_, b) => b)
   )
+
+  def extend(that: __Type): __Type =
+    self.copy(
+      extensions = Some(self.extensions.foldLeft(List(that))(_ ++ _))
+    )
 
   def toType(nonNull: Boolean = false): Type =
     ofType match {
@@ -141,14 +148,24 @@ case class __Type(
   lazy val list: __Type    = __Type(__TypeKind.LIST, ofType = Some(self))
   lazy val nonNull: __Type = __Type(__TypeKind.NON_NULL, ofType = Some(self))
 
-  lazy val allFields: List[__Field] =
-    fields(__DeprecatedArgs.include).getOrElse(Nil)
+  lazy val allFields: List[__Field] = {
+    val original = fields(__DeprecatedArgs.include).getOrElse(Nil)
+    val extended = extensions.getOrElse(Nil).flatMap(_.allFields)
+    original ++ extended
+  }
 
-  lazy val allInputFields: List[__InputValue] =
-    inputFields(__DeprecatedArgs.include).getOrElse(Nil)
+  lazy val allInputFields: List[__InputValue] = {
+    val original = inputFields(__DeprecatedArgs.include).getOrElse(Nil)
+    val extended = extensions.getOrElse(Nil).flatMap(_.allInputFields)
+    original ++ extended
+  }
 
-  lazy val allEnumValues: List[__EnumValue] =
-    enumValues(__DeprecatedArgs.include).getOrElse(Nil)
+  lazy val allEnumValues: List[__EnumValue] = {
+    val original = enumValues(__DeprecatedArgs.include).getOrElse(Nil)
+    val extended = extensions.getOrElse(Nil).flatMap(_.allEnumValues)
+    original ++ extended
+
+  }
 
   private lazy val allFieldsMap = {
     val map = collection.mutable.HashMap.empty[String, __Field]

@@ -8,7 +8,7 @@ import caliban.Value.{ BooleanValue, IntValue, NullValue, StringValue }
 import caliban._
 import caliban.introspection.adt.__Type
 import caliban.parsing.adt.LocationInfo
-import caliban.schema.Annotations.{ GQLInterface, GQLName, GQLOneOfInput, GQLValueType }
+import caliban.schema.Annotations.{ GQLExtend, GQLInterface, GQLName, GQLOneOfInput, GQLValueType }
 import caliban.schema.ArgBuilder.auto._
 import caliban.schema.Schema.auto._
 import caliban.schema._
@@ -1664,6 +1664,50 @@ object ExecutionSpec extends ZIOSpecDefault {
                 data => assertTrue(response.data.toString == data)
               )
             )
+        }
+      },
+      test("extending a schema") {
+        case class Foo(hello: String)
+        case class FooExtended(world: String)
+        case class Query(value: (Foo, FooExtended))
+
+        val fooExtended                                         = Schema.gen[Any, FooExtended]
+        implicit val fooSchema: Schema[Any, (Foo, FooExtended)] = Schema.gen[Any, Foo].extend(fooExtended)
+        implicit val querySchema: Schema[Any, Query]            = Schema.gen[Any, Query]
+        val schema                                              = graphQL(RootResolver(Query(Foo("hello") -> FooExtended("world"))))
+        schema.interpreter.flatMap(_.execute("{ value { hello world } }")).map { response =>
+          assertTrue(
+            response.data == ResponseValue.ObjectValue(
+              List(
+                "value" -> ResponseValue.ObjectValue(
+                  List(
+                    "hello" -> Value.StringValue("hello"),
+                    "world" -> Value.StringValue("world")
+                  )
+                )
+              )
+            )
+          )
+        }
+      },
+      test("derive extended schema") {
+        case class FooExtended(world: String)
+        case class Foo(hello: String, @GQLExtend extended: FooExtended)
+        case class Query(value: Foo)
+        implicit val fooExtendedSchema: Schema[Any, FooExtended] = Schema.gen[Any, FooExtended]
+        implicit val fooSchema: Schema[Any, Foo]                 = Schema.gen[Any, Foo]
+        implicit val querySchema                                 = Schema.gen[Any, Query]
+        val api                                                  = graphQL(RootResolver(Query(Foo("hello", FooExtended("world")))))
+        api.interpreter.flatMap(_.execute("{ value { world } }")).map { response =>
+          assertTrue(
+            response.data == ResponseValue.ObjectValue(
+              List(
+                "value" -> ResponseValue.ObjectValue(
+                  List("world" -> Value.StringValue("world"))
+                )
+              )
+            )
+          )
         }
       }
     )
