@@ -5,6 +5,12 @@ import caliban.Value.StringValue
 import caliban.parsing.adt.Definition.TypeSystemDefinition.TypeDefinition
 import caliban.parsing.adt.Definition.TypeSystemDefinition.TypeDefinition._
 import caliban.parsing.adt.Definition.TypeSystemExtension
+import caliban.parsing.adt.Definition.TypeSystemExtension.TypeExtension
+import caliban.parsing.adt.Definition.TypeSystemExtension.TypeExtension.{
+  EnumTypeExtension,
+  ObjectTypeExtension,
+  ScalarTypeExtension
+}
 import caliban.parsing.adt.Type.{ ListType, NamedType }
 import caliban.parsing.adt.{ Directive, Type }
 import caliban.rendering.DocumentRenderer
@@ -89,7 +95,7 @@ case class __Type(
             name.getOrElse(""),
             interfaces().getOrElse(Nil).map(t => NamedType(t.name.getOrElse(""), nonNull = false)),
             directives.getOrElse(Nil),
-            allFields.map(_.toFieldDefinition)
+            allBaseFields.map(_.toFieldDefinition)
           )
         )
       case __TypeKind.INTERFACE    =>
@@ -99,7 +105,7 @@ case class __Type(
             name.getOrElse(""),
             interfaces().getOrElse(Nil).map(t => NamedType(t.name.getOrElse(""), nonNull = false)),
             directives.getOrElse(Nil),
-            allFields.map(_.toFieldDefinition)
+            allBaseFields.map(_.toFieldDefinition)
           )
         )
       case __TypeKind.UNION        =>
@@ -132,6 +138,43 @@ case class __Type(
       case _                       => None
     }
 
+  def toTypeExtensions: List[TypeExtension] =
+    extensions match {
+      case None             =>
+        Nil
+      case Some(extensions) =>
+        kind match {
+          case __TypeKind.SCALAR       =>
+            extensions.map { typ =>
+              ScalarTypeExtension(
+                name.getOrElse(""),
+                typ.directives.getOrElse(Nil)
+              )
+            }
+          case __TypeKind.OBJECT       =>
+            extensions.map { typ =>
+              ObjectTypeExtension(
+                name.getOrElse(""),
+                typ.interfaces().getOrElse(Nil).map(t => NamedType(t.name.getOrElse(""), nonNull = false)),
+                typ.directives.getOrElse(Nil),
+                typ.allFields.map(_.toFieldDefinition)
+              )
+            }
+          case __TypeKind.INTERFACE    => ???
+          case __TypeKind.UNION        => ???
+          case __TypeKind.ENUM         =>
+            extensions.map { typ =>
+              EnumTypeExtension(
+                name.getOrElse(""),
+                typ.directives.getOrElse(Nil),
+                typ.enumValues(__DeprecatedArgs.include).getOrElse(Nil).map(_.toEnumValueDefinition)
+              )
+            }
+          case __TypeKind.INPUT_OBJECT => ???
+          case _                       => Nil
+        }
+    }
+
   def isNullable: Boolean =
     kind match {
       case __TypeKind.NON_NULL => false
@@ -148,10 +191,12 @@ case class __Type(
   lazy val list: __Type    = __Type(__TypeKind.LIST, ofType = Some(self))
   lazy val nonNull: __Type = __Type(__TypeKind.NON_NULL, ofType = Some(self))
 
+  lazy val allBaseFields: List[__Field] =
+    fields(__DeprecatedArgs.include).getOrElse(Nil)
+
   lazy val allFields: List[__Field] = {
-    val original = fields(__DeprecatedArgs.include).getOrElse(Nil)
     val extended = extensions.getOrElse(Nil).flatMap(_.allFields)
-    original ++ extended
+    allBaseFields ++ extended
   }
 
   lazy val allInputFields: List[__InputValue] = {

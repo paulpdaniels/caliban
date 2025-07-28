@@ -1698,7 +1698,7 @@ object ExecutionSpec extends ZIOSpecDefault {
         implicit val fooSchema: Schema[Any, Foo]                 = Schema.gen[Any, Foo]
         implicit val querySchema                                 = Schema.gen[Any, Query]
         val api                                                  = graphQL(RootResolver(Query(Foo("hello", FooExtended("world")))))
-        api.interpreter.flatMap(_.execute("{ value { world } }")).map { response =>
+        api.interpreter.flatMap(_.execute("{ value { hello world } }")).map { response =>
           assertTrue(
             response.data == ResponseValue.ObjectValue(
               List(
