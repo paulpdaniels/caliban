@@ -8,6 +8,7 @@ import caliban.parsing.adt.Definition.TypeSystemExtension
 import caliban.parsing.adt.Definition.TypeSystemExtension.TypeExtension
 import caliban.parsing.adt.Definition.TypeSystemExtension.TypeExtension.{
   EnumTypeExtension,
+  InterfaceTypeExtension,
   ObjectTypeExtension,
   ScalarTypeExtension
 }
@@ -155,12 +156,21 @@ case class __Type(
             extensions.map { typ =>
               ObjectTypeExtension(
                 name.getOrElse(""),
-                typ.interfaces().getOrElse(Nil).map(t => NamedType(t.name.getOrElse(""), nonNull = false)),
+                typ.interfaces().getOrElse(Nil).map { t =>
+                  NamedType(t.name.getOrElse(""), nonNull = false)
+                },
                 typ.directives.getOrElse(Nil),
                 typ.allFields.map(_.toFieldDefinition)
               )
             }
-          case __TypeKind.INTERFACE    => ???
+          case __TypeKind.INTERFACE    =>
+            extensions.map { typ =>
+              InterfaceTypeExtension(
+                name.getOrElse(""),
+                typ.directives.getOrElse(Nil),
+                typ.allFields.map(_.toFieldDefinition)
+              )
+            }
           case __TypeKind.UNION        => ???
           case __TypeKind.ENUM         =>
             extensions.map { typ =>
@@ -299,6 +309,10 @@ object TypeVisitor {
   object directives  extends ListVisitorConstructors[Directive]    {
     val set: __Type => (List[Directive] => List[Directive]) => __Type =
       t => f => t.copy(directives = t.directives.map(f))
+  }
+  object extensions  extends ListVisitorConstructors[__Type]       {
+    val set: __Type => (List[__Type] => List[__Type]) => __Type =
+      t => f => t.copy(extensions = t.extensions.map(f))
   }
 }
 

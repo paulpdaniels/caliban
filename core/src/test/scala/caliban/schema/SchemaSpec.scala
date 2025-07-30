@@ -416,7 +416,7 @@ object SchemaSpec extends ZIOSpecDefault {
                       |""".stripMargin
         )
       },
-      test("extend a schema - basic") {
+      test("render extended schema - manual") {
         case class Foo(hello: String)
         case class FooExtended(world: String)
         case class Query(value: (Foo, FooExtended))
@@ -427,7 +427,7 @@ object SchemaSpec extends ZIOSpecDefault {
         val schema                                              = graphQL(RootResolver(Query(Foo("hello") -> FooExtended("world")))).render
         assertTrue(schema == "bob")
       },
-      test("extend schema - render") {
+      test("render extended schema - derived") {
         case class FooExtended(world: String)
         case class Foo(hello: String, @GQLExtend extended: FooExtended)
         case class Query(foo: Foo)
@@ -435,6 +435,47 @@ object SchemaSpec extends ZIOSpecDefault {
         val schema   = graphQL(RootResolver(Query(Foo("hello", FooExtended("world")))))
         val rendered = schema.render
         assertTrue(rendered == "bob")
+      },
+      test("render extended schema - add directives") {
+        @GQLDirective(Directive("myDirective")) case class FooExtended()
+        case class Foo(hello: String, @GQLExtend extended: FooExtended)
+        case class Query(foo: Foo)
+
+        val schema   = graphQL(RootResolver(Query(Foo("hello", FooExtended()))))
+        val rendered = schema.render
+        assertTrue(rendered == "bob")
+      },
+      test("render extended schema - add interfaces") {
+        @GQLInterface
+        sealed trait BarInterface
+        @GQLExtend case class FooExtended(world: String) extends BarInterface
+        case class Foo(hello: String)
+        case class Query(foo: Foo)
+
+        val schema   = graphQL(RootResolver(Query(Foo("hello", FooExtended("world"))))).render
+        val expected =
+          """schema {
+            |  query: Query
+            |}
+            |
+            |interface BarInterface {
+            |  world: String!
+            |}
+            |
+            |type Foo {
+            |  hello: String!
+            |}
+            |
+            |type Query {
+            |  foo: Foo!
+            |}
+            |
+            |extend type Foo implements BarInterface {
+            |  world: String!
+            |}
+            |""".stripMargin
+
+        assertTrue(schema == expected)
       }
     )
 

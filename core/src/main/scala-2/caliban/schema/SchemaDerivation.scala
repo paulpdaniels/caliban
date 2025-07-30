@@ -128,10 +128,9 @@ trait CommonSchemaDerivation[R] {
             .toList,
           getDirectives(ctx),
           Some(ctx.typeName.full),
-          extensions = Some(ctx.parameters.collect {
-            case p if p.annotations.contains(GQLExtend()) =>
-              p.typeclass.toType_(isInput, isSubscription).copy(name = Some(getName(ctx)))
-          }.toList).filter(_.nonEmpty)
+          extensions = Some(
+            extensions.map(_.typeclass.toType_(isInput, isSubscription)).toList
+          ).filter(_.nonEmpty)
         )
     }
 
