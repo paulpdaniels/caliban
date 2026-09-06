@@ -185,17 +185,17 @@ object SupergraphGatewaySpec extends ZIOSpecDefault {
     },
     test("preserves the generation and warm cache when the republished supergraph is unchanged") {
       for {
-        sdl              <- supergraphSchema
-        recorded         <- recordEvents
-        (events, wrapper) = recorded
-        remote           <- source(sdl)
-        runtime          <- (Gateway.fromSupergraph(remote.supergraph) @@ wrapper).reloadableForTest
-        _                <- runtime.execute("{ characters { name } }")
-        _                <- remote.setSchema(reformatted(sdl))
-        failed           <- poll(runtime)
-        result           <- runtime.execute("{ characters { name } }")
-        observed         <- events.get
-        fetches          <- remote.fetches.get
+        sdl            <- supergraphSchema
+        recorded       <- recordEvents
+        (events, hooks) = recorded
+        remote         <- source(sdl)
+        runtime        <- Gateway.fromSupergraph(remote.supergraph).withPhaseHooks(hooks).reloadableForTest
+        _              <- runtime.execute("{ characters { name } }")
+        _              <- remote.setSchema(reformatted(sdl))
+        failed         <- poll(runtime)
+        result         <- runtime.execute("{ characters { name } }")
+        observed       <- events.get
+        fetches        <- remote.fetches.get
       } yield assertTrue(
         failed.isEmpty,
         result.errors.isEmpty,
@@ -395,17 +395,17 @@ object SupergraphGatewaySpec extends ZIOSpecDefault {
     },
     test("preserves the generation and warm cache when the uplink answers Unchanged") {
       for {
-        sdl              <- supergraphSchema
-        recorded         <- recordEvents
-        (events, wrapper) = recorded
-        remote           <- uplinkOf(sdl)
-        runtime          <- (Gateway.fromSupergraph(remote.supergraph) @@ wrapper).reloadableEvery(uplinkPollInterval)
-        _                <- runtime.execute("{ characters { name } }")
-        _                <- remote.serve(uplinkUnchanged("id-1"))
-        failed           <- uplinkPoll(runtime)
-        result           <- runtime.execute("{ characters { name } }")
-        observed         <- events.get
-        polls            <- remote.polls
+        sdl            <- supergraphSchema
+        recorded       <- recordEvents
+        (events, hooks) = recorded
+        remote         <- uplinkOf(sdl)
+        runtime        <- Gateway.fromSupergraph(remote.supergraph).withPhaseHooks(hooks).reloadableEvery(uplinkPollInterval)
+        _              <- runtime.execute("{ characters { name } }")
+        _              <- remote.serve(uplinkUnchanged("id-1"))
+        failed         <- uplinkPoll(runtime)
+        result         <- runtime.execute("{ characters { name } }")
+        observed       <- events.get
+        polls          <- remote.polls
       } yield assertTrue(
         failed.isEmpty,
         result.errors.isEmpty,

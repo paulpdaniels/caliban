@@ -295,14 +295,67 @@ private[gateway] object GatewayTestSupport {
     LocalApi.api
   }
 
-  def recordEvents: UIO[(Ref[Vector[GatewayWrapper.Event]], GatewayWrapper[Any])] =
+  /**
+   * Attaches the same handler to every phase that reports a [[GatewayWrapper.Result]].
+   */
+  private trait PhaseRecorder {
+    def handler[Ev <: GatewayWrapper.Event]: PhaseHandler[Any, Ev, Nothing, GatewayWrapper.Result]
+  }
+
+  private def everyResultPhase(recorder: PhaseRecorder): PhaseHooks[Any] =
+    PhaseHooks.SubscriptionSetup(recorder.handler) ++
+      PhaseHooks.SubscriptionEvent(recorder.handler) ++
+      PhaseHooks.SubscriptionTerminated(recorder.handler) ++
+      PhaseHooks.SubscriptionAdmission(recorder.handler) ++
+      PhaseHooks.SubscriptionOverflow(recorder.handler) ++
+      PhaseHooks.Request(recorder.handler) ++
+      PhaseHooks.Routing(recorder.handler) ++
+      PhaseHooks.SubgraphCall(recorder.handler) ++
+      PhaseHooks.Attempt(recorder.handler) ++
+      PhaseHooks.Retry(recorder.handler) ++
+      PhaseHooks.Completion(recorder.handler) ++
+      PhaseHooks.CacheAccess(recorder.handler) ++
+      PhaseHooks.Admission(recorder.handler)
+
+  /**
+   * Records every lifecycle event the gateway reaches, in order.
+   *
+   * The hooks are an ordinary [[PhaseHooks]] value, so a spec that needs targeted behaviour composes it rather than
+   * rebuilding the recorder: `gateway.withPhaseHooks(hooks ++ PhaseHooks.SubscriptionSetup(handler))`.
+   */
+  def recordEvents: UIO[(Ref[Vector[GatewayWrapper.Event]], PhaseHooks[Any])] =
     Ref.make(Vector.empty[GatewayWrapper.Event]).map { events =>
-      val wrapper = new GatewayWrapper[Any] {
-        def wrap[R, E, A](event: GatewayWrapper.Event)(effect: ZIO[R, E, A])(
-          result: Exit[E, A] => GatewayWrapper.Result
-        )(implicit trace: Trace): ZIO[R, E, A] = events.update(_ :+ event) *> effect
-      }
-      (events, wrapper)
+      val hooks = everyResultPhase(new PhaseRecorder {
+        def handler[Ev <: GatewayWrapper.Event]: PhaseHandler[Any, Ev, Nothing, GatewayWrapper.Result] =
+          PhaseHandler.incomingDiscard((ev: Ev) => events.update(_ :+ ev))
+      })
+
+      (events, hooks)
+    }
+
+  /**
+   * Records every lifecycle event on entry, and on exit the [[GatewayWrapper.Result]] each one completed with,
+   * paired with the event it belongs to.
+   */
+  def recordEventsAndResults: UIO[
+    (
+      Ref[Vector[GatewayWrapper.Event]],
+      Ref[Vector[(GatewayWrapper.Event, GatewayWrapper.Result)]],
+      PhaseHooks[Any]
+    )
+  ] =
+    for {
+      events  <- Ref.make(Vector.empty[GatewayWrapper.Event])
+      results <- Ref.make(Vector.empty[(GatewayWrapper.Event, GatewayWrapper.Result)])
+    } yield {
+      val hooks = everyResultPhase(new PhaseRecorder {
+        def handler[Ev <: GatewayWrapper.Event]: PhaseHandler[Any, Ev, Nothing, GatewayWrapper.Result] =
+          PhaseHandler((ev: Ev) => events.update(_ :+ ev).as((ev, ())))((ev, _, result) =>
+            results.update(_ :+ (ev -> result))
+          )
+      })
+
+      (events, results, hooks)
     }
 
   def validateRequest(schema: String, request: GraphQLRequest): IO[CalibanError, Unit] =

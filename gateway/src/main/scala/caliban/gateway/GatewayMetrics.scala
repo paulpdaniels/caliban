@@ -9,7 +9,7 @@ import zio.{ Chunk, Clock, Exit, Trace, ZIO }
 /**
  * Built-in bounded-cardinality gateway metrics.
  *
- * Attach [[wrapper]] with `Gateway.compose(... ) @@ GatewayMetrics.wrapper`. Metrics are opt-in so gateways that do not
+ * Attach [[aspect]] with `Gateway.compose(... ) @@ GatewayMetrics.aspect`. Metrics are opt-in so gateways that do not
  * collect them do not pay for clocks, labels, or metric-registry updates on their request path.
  */
 object GatewayMetrics {
@@ -40,73 +40,110 @@ object GatewayMetrics {
   private val subscriptionEventDuration =
     Metric.histogram("caliban_gateway_subscription_event_duration_seconds", durationBuckets)
 
-  val wrapper: GatewayWrapper[Any] = new GatewayWrapper[Any] {
-    def wrap[R, E, A](event: Event)(effect: ZIO[R, E, A])(result: Exit[E, A] => Result)(implicit
-      trace: Trace
-    ): ZIO[R, E, A] =
-      event match {
-        case Event.SubscriptionAdmission(accepted)          =>
-          subscriptionAdmission.tagged("result", if (accepted) "accepted" else "rejected").increment *>
-            subscriptionsActive.increment.when(accepted) *> effect
-        case Event.SubscriptionTerminated(reason, duration) =>
+  private[gateway] def hooks =
+    PhaseHooks.SubscriptionAdmission(
+      PhaseHandler.incomingDiscard { ev =>
+        subscriptionAdmission.tagged("result", if (ev.accepted) "accepted" else "rejected").increment *>
+          subscriptionsActive.increment.whenDiscard(ev.accepted)
+      }
+    ) ++
+      PhaseHooks
+        .SubscriptionTerminated(PhaseHandler.incomingDiscard { case Event.SubscriptionTerminated(reason, duration) =>
           subscriptionsActive.decrement *> subscriptionTerminated
             .tagged("reason", reason)
             .increment *>
-            subscriptionLifetime.update(seconds(duration)) *> effect
-        case Event.SubscriptionOverflow                     => subscriptionOverflow.increment *> effect
-        case Event.SubscriptionSetup                        => trackDuration(subscriptionSetup)(effect)(result)
-        case Event.SubscriptionEvent                        =>
-          trackDuration(subscriptionEventDuration)(effect)(result)
-        case _: Event.Request                               =>
-          track(
+            subscriptionLifetime.update(seconds(duration))
+        }) ++
+      PhaseHooks.SubscriptionOverflow(PhaseHandler.incomingDiscard(_ => subscriptionOverflow.increment)) ++
+      PhaseHooks.SubscriptionSetup(trackPhaseDuration(subscriptionSetup)) ++
+      PhaseHooks
+        .Request(
+          trackPhase(
             requestsActive,
             requestDuration,
             requests,
-            Set.empty,
+            _ => Set.empty,
             requestDetailLabels,
             requestTotalLabels
-          )(effect)(result)
-        case Event.Routing                                  =>
-          trackDuration(routingDuration)(effect)(result)
-        case Event.SubgraphCall(subgraph, _)                =>
-          track(
-            subgraphCallsActive,
-            subgraphCallDuration,
-            subgraphCalls,
-            Set(MetricLabel("subgraph", subgraph)),
-            subgraphDetailLabels,
-            noLabels
-          )(effect)(result)
-        case _: Event.Attempt                               => effect
-        case Event.Retry(subgraph, _)                       => retries.tagged("subgraph", subgraph).update(1L) *> effect
-        case Event.Completion                               => effect
-        case Event.CacheAccess(value)                       => cache.tagged("result", value.label).update(1L) *> effect
-        case Event.Admission(kind)                          => admission.tagged("kind", kind.label).increment *> effect
-      }
+          )
+        ) ++
+      PhaseHooks.SubscriptionEvent(trackPhaseDuration(subscriptionEventDuration)) ++
+      PhaseHooks.Routing(trackPhaseDuration(routingDuration)) ++
+      PhaseHooks.SubgraphCall(
+        trackPhase(
+          subgraphCallsActive,
+          subgraphCallDuration,
+          subgraphCalls,
+          ev => Set(MetricLabel("subgraph", ev.subgraph)),
+          subgraphDetailLabels,
+          noLabels
+        )
+      ) ++
+      PhaseHooks.Retry(PhaseHandler.incomingDiscard(ev => retries.tagged("subgraph", ev.subgraph).update(1L))) ++
+      PhaseHooks.CacheAccess(
+        PhaseHandler.incomingDiscard(ev => cache.tagged("result", ev.result.label).update(1L))
+      ) ++
+      PhaseHooks.Admission(PhaseHandler.incomingDiscard(ev => admission.tagged("kind", ev.kind.label).increment))
+
+  val aspect: GatewayAspect[Any] = new GatewayAspect[Any] {
+    private[gateway] def apply[R1](gateway: Gateway[R1]): Gateway[R1] =
+      gateway.withPhaseHooks(hooks)
   }
 
-  private def track[R, E, A](
+  private def trackPhase[Event](
+    active: Metric.Gauge[Double],
+    duration: Metric.Histogram[Double],
+    total: Metric.Counter[Long],
+    labels: Event => Set[MetricLabel],
+    detailLabels: Result => Set[MetricLabel],
+    totalLabels: Result => Set[MetricLabel]
+  ): PhaseHandler[Any, Event, Nothing, Result] =
+    PhaseHandler((ev: Event) => enterTrack(active, labels(ev)).map(ev -> _))((ev, ctx: Long, out: Result) =>
+      exitTrack(ctx, active, duration, total, labels(ev), detailLabels, totalLabels, out)
+    )
+
+  private def enterTrack(
+    active: Metric.Gauge[Double],
+    labels: Set[MetricLabel]
+  )(implicit trace: Trace) =
+    ZIO.uninterruptible {
+      Clock.nanoTime.flatMap { startedAt =>
+        active.tagged(labels).increment as startedAt
+      }
+    }
+
+  private def exitTrack(
+    startedAt: Long,
     active: Metric.Gauge[Double],
     duration: Metric.Histogram[Double],
     total: Metric.Counter[Long],
     labels: Set[MetricLabel],
     detailLabels: Result => Set[MetricLabel],
-    totalLabels: Result => Set[MetricLabel]
-  )(effect: ZIO[R, E, A])(result: Exit[E, A] => Result)(implicit
+    totalLabels: Result => Set[MetricLabel],
+    result: Result
+  ): ZIO[Any, Nothing, Unit] =
+    Clock.nanoTime.flatMap { finishedAt =>
+      duration.tagged(labels ++ detailLabels(result)).update(seconds(finishedAt - startedAt)) *>
+        total.tagged(labels ++ totalLabels(result)).update(1L) *>
+        active.tagged(labels).decrement
+    }
+
+  private def trackPhaseDuration[Event](duration: Metric.Histogram[Double])(implicit
     trace: Trace
-  ): ZIO[R, E, A] =
-    ZIO.uninterruptibleMask { restore =>
-      Clock.nanoTime.flatMap { startedAt =>
-        active.tagged(labels).increment *>
-          restore(effect).onExit { exit =>
-            Clock.nanoTime.flatMap { finishedAt =>
-              val value = result(exit)
-              duration.tagged(labels ++ detailLabels(value)).update(seconds(finishedAt - startedAt)) *>
-                total.tagged(labels ++ totalLabels(value)).update(1L) *>
-                active.tagged(labels).decrement
-            }
-          }
-      }
+  ): PhaseHandler[Any, Event, Nothing, Result] =
+    PhaseHandler((ev: Event) => Clock.nanoTime.map(ev -> _))((_, ctx: Long, out: Result) =>
+      exitDuration(ctx, duration, out)
+    )
+
+  private def exitDuration(
+    startedAt: Long,
+    duration: Metric.Histogram[Double],
+    result: Result
+  ): ZIO[Any, Nothing, Unit] =
+    Clock.nanoTime.flatMap { finishedAt =>
+      duration
+        .tagged("outcome", result.outcome.label)
+        .update(seconds(finishedAt - startedAt))
     }
 
   private val requestDetailLabels: Result => Set[MetricLabel] = result =>
@@ -122,19 +159,6 @@ object GatewayMetrics {
     Set(MetricLabel("outcome", result.outcome.label))
 
   private val noLabels: Result => Set[MetricLabel] = _ => Set.empty
-
-  private def trackDuration[R, E, A](duration: Metric.Histogram[Double])(
-    effect: ZIO[R, E, A]
-  )(result: Exit[E, A] => Result)(implicit trace: Trace): ZIO[R, E, A] =
-    Clock.nanoTime.flatMap { startedAt =>
-      effect.onExit { exit =>
-        Clock.nanoTime.flatMap { finishedAt =>
-          duration
-            .tagged("outcome", result(exit).outcome.label)
-            .update(seconds(finishedAt - startedAt))
-        }
-      }
-    }
 
   private def seconds(nanos: Long): Double = nanos.toDouble / 1000000000d
 }

@@ -1,0 +1,191 @@
+package caliban.gateway
+
+import zio.{ Exit, Scope, Trace, ZIO }
+
+/**
+ * A PhaseHandler is an injectable handler for a specific phase of the gateway execution.
+ * For the exact injection points see [[PhaseHooks]] which defines the set of available phases.
+ *
+ * PhaseHandlers are injected at specific points of execution and they can be used for a variety of purposes.
+ * They receive an event type which they can modify during the incoming request processing. This updated event
+ * will be forwarded to the injection point. They can also be used in post-processing use cases, where they receive the
+ * final event, an internal context, and the result of the wrapped execution.
+ *
+ * PhaseHandlers can be composed sequentially using the `++` operator.
+ */
+sealed abstract class PhaseHandler[-R, Event, +Err, -Res] { self =>
+  import PhaseHandler.Combined
+
+  /**
+   * Composes two phase handlers sequentially. The first handler will be executed first, followed by the second handler.
+   * The result of the first handler will be passed as input to the second handler. Both handlers will receive the final
+   * event in their outgoing phase.
+   */
+  def ++[R1 <: R, Err1 >: Err, Res1 <: Res](
+    that: PhaseHandler[R1, Event, Err1, Res1]
+  ): PhaseHandler[R1, Event, Err1, Res1] =
+    if (self == PhaseHandler.empty) that
+    else if (that == PhaseHandler.empty) self
+    else
+      (self, that) match {
+        case (Combined(left), Combined(right)) => Combined(left ++ right)
+        case (Combined(handlers), that)        => Combined(handlers :+ that)
+        case (self, Combined(handlers))        => Combined(self +: handlers)
+        case (left, right)                     => Combined(List(left, right))
+      }
+
+  /**
+   * Whether this phase handler is enabled, when not enabled, it will not be executed during the gateway execution.
+   */
+  def enabled: Boolean
+
+  /**
+   * Runs the phase handler, if enabled. It receives the initial event, an effect to wrap and a conversion function
+   * to convert the result of the wrapped effect into this handler's result type.
+   */
+  final def run[R1 <: R, E >: Err, A](event: Event)(effect: ZIO[R1, E, A])(
+    result: Exit[E, A] => Res
+  )(implicit trace: Trace): ZIO[R1, E, A] =
+    if (!enabled) effect
+    else runWith[R1, E, A](event)(_ => effect)(result)
+
+  /**
+   * Runs the phase handler, if enabled. It receives the initial event, a function to wrap, which itself receives the final event,
+   * and a conversion function to convert the result of the wrapped effect into this handler's result type.
+   */
+  def runWith[R1 <: R, E >: Err, A](event: Event)(fn: Event => ZIO[R1, E, A])(result: Exit[E, A] => Res)(implicit
+    trace: Trace
+  ): ZIO[R1, E, A]
+}
+
+object PhaseHandler {
+
+  /**
+   * Constructs a PhaseHandler with an incoming and outgoing phase as well as a context type
+   * that can be used to pass information between phases.
+   */
+  def apply[R, Ev, Err, Ctx0, Out](incoming: Ev => ZIO[R, Err, (Ev, Ctx0)])(
+    outgoing: (Ev, Ctx0, Out) => ZIO[R, Nothing, Unit]
+  ): PhaseHandler[R, Ev, Err, Out] = IncomingOutgoing(incoming, outgoing)
+
+  /**
+   * Constructs a PhaseHandler that does not perform any incoming or outgoing phases.
+   */
+  def empty[Ev]: PhaseHandler[Any, Ev, Nothing, Any] = Empty.asInstanceOf[PhaseHandler[Any, Ev, Nothing, Any]]
+
+  /**
+   * Constructs a PhaseHandler that only performs an incoming phase. This can be useful either for short-circuiting the wrapped phase,
+   * performing some pre-processing side-effects, or for modifying the incoming event.
+   */
+  def incoming[R, Ev, Err](
+    incoming: Ev => ZIO[R, Err, Ev]
+  ): PhaseHandler[R, Ev, Err, Any] =
+    Incoming(incoming)
+
+  /**
+   * Similar to [[incoming]] but does not modify the incoming event.
+   */
+  def incomingDiscard[R, Ev, Err](
+    incoming: Ev => ZIO[R, Err, Unit]
+  ): PhaseHandler[R, Ev, Err, Any] =
+    Incoming((ev: Ev) => incoming(ev).as(ev))
+
+  /**
+   * Constructs a PhaseHandler that only performs an outgoing phase. This is primarily useful for post-processing side-effects as it doesn't allow
+   * modifying the wrapped event, nor can it fail.
+   */
+  def outgoing[R, Ev, Out](
+    outgoing: (Ev, Out) => ZIO[R, Nothing, Unit]
+  ): PhaseHandler[R, Ev, Nothing, Out] =
+    apply[R, Ev, Nothing, Unit, Out]((ev: Ev) => Exit.succeed((ev, ())))((ev: Ev, _: Unit, out: Out) =>
+      outgoing(ev, out)
+    )
+
+  /**
+   * Constructs a PhaseHandler that wraps another PhaseHandler which has a Scope requirement. This constructor
+   * consumes the Scope so that it is bound to the lifespan of the hook.
+   */
+  def scoped[R, Ev, Err, Out](handler: PhaseHandler[Scope with R, Ev, Err, Out]): PhaseHandler[R, Ev, Err, Out] =
+    Scoped[R, Ev, Err, Out](handler)
+
+  private case object Empty extends PhaseHandler[Any, Any, Nothing, Any] {
+    override val enabled: Boolean = false
+
+    def runWith[R1 <: Any, E >: Nothing, A](event: Any)(fn: Any => ZIO[R1, E, A])(
+      result: Exit[E, A] => Any
+    )(implicit trace: Trace): ZIO[R1, E, A] = fn(event)
+  }
+
+  private case class Incoming[-R, Ev, +Err](incoming: Ev => ZIO[R, Err, Ev]) extends PhaseHandler[R, Ev, Err, Any] {
+    override val enabled: Boolean = true
+
+    def runWith[R1 <: R, E >: Err, A](event: Ev)(fn: Ev => ZIO[R1, E, A])(
+      result: Exit[E, A] => Any
+    )(implicit trace: Trace): ZIO[R1, E, A] = incoming(event).flatMap(fn)
+  }
+
+  private case class IncomingOutgoing[-R, Ev, +Err, Out, Ctx0](
+    incoming: Ev => ZIO[R, Err, (Ev, Ctx0)],
+    outgoing: (Ev, Ctx0, Out) => ZIO[R, Nothing, Unit]
+  ) extends PhaseHandler[R, Ev, Err, Out] {
+    override val enabled: Boolean = true
+
+    def runWith[R1 <: R, E >: Err, A](event: Ev)(fn: Ev => ZIO[R1, E, A])(
+      result: Exit[E, A] => Out
+    )(implicit trace: Trace): ZIO[R1, E, A] = incoming(event).flatMap { case (ev, ctx) =>
+      fn(ev).onExit(exit => outgoing(ev, ctx, result(exit)))
+    }
+  }
+
+  private case class Scoped[-R, Ev, +Err, Out](handler: PhaseHandler[Scope with R, Ev, Err, Out])
+      extends PhaseHandler[R, Ev, Err, Out] {
+
+    def enabled: Boolean = handler.enabled
+
+    def runWith[R1 <: R, E >: Err, A](event: Ev)(fn: Ev => ZIO[R1, E, A])(
+      result: Exit[E, A] => Out
+    )(implicit trace: Trace): ZIO[R1, E, A] =
+      ZIO.scoped[R1](handler.runWith[Scope with R1, E, A](event)(fn)(result))
+  }
+
+  private case class Combined[-R, Ev, +Err, Out](
+    handlers: List[PhaseHandler[R, Ev, Err, Out]]
+  ) extends PhaseHandler[R, Ev, Err, Out] {
+
+    def enabled: Boolean = handlers.exists(_.enabled)
+
+    def runWith[R1 <: R, E >: Err, A](event: Ev)(fn: Ev => ZIO[R1, E, A])(
+      result: Exit[E, A] => Out
+    )(implicit trace: Trace): ZIO[R1, E, A] = {
+      def loop(
+        remaining: List[PhaseHandler[R, Ev, Err, Out]],
+        ev0: Ev,
+        stack: List[(Ev, Out) => ZIO[R1, Nothing, Unit]]
+      ): ZIO[R1, E, A] =
+        remaining match {
+          case Nil                                          =>
+            fn(ev0).onExit { exit =>
+              val value = result(exit)
+              ZIO.foreachDiscard(stack.reverse)(_.apply(ev0, value))
+            }
+          case Incoming(incoming) :: next                   =>
+            incoming(ev0).flatMap(loop(next, _, stack))
+          case IncomingOutgoing(incoming, outgoing) :: next =>
+            incoming(ev0).flatMap { case (ev1, ctx) =>
+              val partial = (ev2: Ev, out: Out) => outgoing(ev2, ctx, out)
+              loop(next, ev1, partial :: stack)
+            }
+          case Combined(handlers) :: next                   =>
+            loop(handlers ++ next, ev0, stack)
+          // The scope has to outlive the handler's own outgoing callback, which runs inside `runWith`, so it cannot be
+          // shared with the rest of the chain and closed at the end of it.
+          case Scoped(handler) :: next                      =>
+            ZIO.scoped[R1](handler.runWith[Scope with R1, E, A](ev0)((ev1: Ev) => loop(next, ev1, stack))(result))
+          case handler :: next                              =>
+            handler.runWith[R1, E, A](ev0)((ev1: Ev) => loop(next, ev1, stack))(result)
+        }
+
+      loop(handlers, event, Nil)
+    }
+  }
+}

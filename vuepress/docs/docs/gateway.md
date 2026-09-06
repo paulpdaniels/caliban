@@ -210,25 +210,27 @@ type Product {
 
 The gateway resolves `percent(x)` labels itself. For a percentage between 0 and 100, it makes one random decision for each label and request. The selection is not sticky across requests. Fields that use the same label share the decision.
 
-For a custom label, attach a `GatewayWrapper.overrideLabels` wrapper:
+For a custom label, attach an override-label hook:
 
 ```scala
 import caliban.GraphQLRequest
-import caliban.gateway.{ Gateway, GatewayWrapper }
+import caliban.gateway.{ Gateway, PhaseHandler, PhaseHooks }
 import zio.Task
 
 def activeLabels(request: GraphQLRequest): Task[Set[String]] = ???
 
-val progressiveOverrides = GatewayWrapper.overrideLabels[Any] { (request, labels) =>
-  activeLabels(request).map(_ intersect labels)
-}
+val progressiveOverrides = PhaseHooks.OverrideLabels(
+  PhaseHandler.overrideLabels[Any] { (request, labels) =>
+    activeLabels(request).map(_ intersect labels)
+  }
+)
 
-val gateway = Gateway.compose(products, reviews) @@ progressiveOverrides
+val gateway = Gateway.compose(products, reviews).withPhaseHooks(progressiveOverrides)
 ```
 
-The wrapper receives the request and the custom labels reached by the selected operation. Return the labels that should use the overriding subgraph. The gateway ignores labels that were not supplied. Without this wrapper, custom labels remain inactive and the gateway uses the original subgraph.
+The hook receives the request and the custom labels reached by the selected operation. Return the labels that should use the overriding subgraph. The gateway ignores labels that were not supplied. Without this hook, custom labels remain inactive and the gateway uses the original subgraph. Several such hooks can be attached; the labels they activate are combined.
 
-The gateway calls the wrapper once per relevant request, before it checks the operation cache. It does not call the wrapper for percentage-only operations or operations that reach no custom labels. Each active-label combination has its own cached plan, so keep the label lookup cheap and limit the number of combinations that it returns. If the wrapper fails, the gateway returns an internal execution error without contacting a subgraph.
+The gateway calls the hook once per relevant request, before it checks the operation cache. It does not call the hook for percentage-only operations or operations that reach no custom labels. Each active-label combination has its own cached plan, so keep the label lookup cheap and limit the number of combinations that it returns. If the hook fails, the gateway returns an internal execution error without contacting a subgraph.
 
 ### In-process Caliban APIs
 
@@ -580,7 +582,7 @@ Metrics are opt-in:
 ```scala
 import caliban.gateway.{ Gateway, GatewayMetrics }
 
-val gateway = Gateway.compose(products, reviews) @@ GatewayMetrics.wrapper
+val gateway = Gateway.compose(products, reviews) @@ GatewayMetrics.aspect
 ```
 
 The built-in metrics report requests, routing, subgraph calls, retries, admission counts, operation-cache activity, and subscriptions.
@@ -592,10 +594,15 @@ import caliban.gateway.GatewayMetrics
 import caliban.gateway.tracing.GatewayTracing
 
 val gateway = Gateway.compose(products, reviews) @@
-  (GatewayMetrics.wrapper |+| GatewayTracing.wrapper)
+  (GatewayMetrics.aspect @@ GatewayTracing.aspect)
 ```
 
-The tracing wrapper creates spans for gateway requests and remote calls. `QuickAdapter` propagates incoming trace headers.
+The tracing aspect creates spans for gateway requests and remote calls. `QuickAdapter` propagates incoming trace headers.
+The request span covers the whole request, so planning, the operation cache and remote calls are nested inside it. A
+subscription request gets one too, covering its setup; the subscription itself is reported by the subscription spans.
+
+Both are bundles of `PhaseHooks`. Add hooks of your own with `Gateway#withPhaseHooks`, which accumulates, so custom hooks
+and the built-in aspects can be attached to the same gateway.
 
 ## Subscriptions
 

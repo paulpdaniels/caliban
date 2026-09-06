@@ -2,7 +2,7 @@ package caliban.gateway.internal.execution
 
 import caliban.{ CalibanError, GraphQLInterpreter, GraphQLRequest, GraphQLResponse, GraphQLResponseContext, PathValue }
 import caliban.execution.Field
-import caliban.gateway.GatewayWrapper
+import caliban.gateway.{ GatewayWrapper, PhaseHooks }
 import caliban.gateway.GatewayWrapper.{ Event, Outcome, Result }
 import caliban.gateway.internal.SubscriptionTermination
 import caliban.gateway.internal.execution.SubgraphExecutor.ErrorPolicy
@@ -35,20 +35,20 @@ private[gateway] trait SubgraphExecutor[-R] {
 private[gateway] final class ObservedSubgraphExecutor[R](
   name: String,
   underlying: SubgraphExecutor[R],
-  wrapper: GatewayWrapper[R]
+  phases: PhaseHooks[R]
 ) extends SubgraphExecutor[R] {
   val errorPolicy: ErrorPolicy = underlying.errorPolicy
 
   override def forSubscription(implicit trace: Trace)                    =
-    underlying.forSubscription.map(new ObservedSubgraphExecutor(name, _, wrapper))
+    underlying.forSubscription.map(new ObservedSubgraphExecutor(name, _, phases))
   override def subscribe(request: GraphQLRequest)(implicit trace: Trace) = underlying.subscribe(request)
 
   def execute(request: GraphQLRequest, operationType: OperationType)(implicit
     trace: Trace
   ): ZIO[R, SubgraphExecutor.Failure, GraphQLResponse[CalibanError]] =
-    if (!wrapper.enabled) underlying.execute(request, operationType)
+    if (!phases.enabled) underlying.execute(request, operationType)
     else
-      wrapper.wrap(Event.SubgraphCall(name, operationType))(underlying.execute(request, operationType))(
+      phases.subgraphCall.run(Event.SubgraphCall(name, operationType))(underlying.execute(request, operationType))(
         SubgraphExecutor.resultFromExit
       )
 

@@ -2,7 +2,7 @@ package caliban.gateway.internal
 
 import caliban.{ CalibanError, Configurator, GraphQLRequest, InputValue, ResponseValue, Value }
 import caliban.execution.{ ExecutionRequest, Field, RequestPreparation }
-import caliban.gateway.{ GatewayConfig, GatewayWrapper }
+import caliban.gateway.{ GatewayConfig, GatewayWrapper, PhaseHooks }
 import caliban.gateway.internal.execution.PreparedPlan
 import caliban.gateway.internal.OperationCache.Weighted
 import caliban.gateway.internal.OperationPreparation._
@@ -292,11 +292,11 @@ private[gateway] object OperationPreparation {
     planner: OperationPlanner,
     hooks: OperationHooks[R],
     config: GatewayConfig,
-    wrapper: GatewayWrapper[R],
+    phases: PhaseHooks[R],
     estimateCost: (ExecutionRequest, OperationPlan) => Either[String, Long]
   )(implicit trace: Trace): UIO[OperationPreparation[R]] =
     OperationCache
-      .make[CacheKey, CalibanError, CachedOperation, R](config.maxOperationCacheWeight, wrapper)
+      .make[CacheKey, CalibanError, CachedOperation, R](config.maxOperationCacheWeight, phases)
       .map(cache =>
         new OperationPreparation(
           rootType,

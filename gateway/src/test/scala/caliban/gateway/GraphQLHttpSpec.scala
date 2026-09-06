@@ -551,13 +551,13 @@ object GraphQLHttpSpec extends ZIOSpecDefault {
         backend        <- HttpClientZioBackend.scoped()
         calls          <- Ref.make(0)
         remote         <- endpoint(_ => calls.update(_ + 1).as(Response.json("""{"data":{"value":"ok"}}""")))
-        gate           <- AdmissionGate.make(1, GatewayWrapper.AdmissionKind.Subgraph, GatewayWrapper.empty)
+        gate           <- AdmissionGate.make(1, GatewayWrapper.AdmissionKind.Subgraph, PhaseHooks.empty)
         blockerStarted <- Promise.make[Nothing, Unit]
         releaseBlocker <- Promise.make[Nothing, Unit]
         blocker        <- gate(blockerStarted.succeed(()).unit *> releaseBlocker.await).fork
         _              <- blockerStarted.await
         source         <- RemoteSubgraphExecutor
-                            .make("remote", remote, backend, config, GatewayWrapper.empty, admission = Some(gate))
+                            .make("remote", remote, backend, config, PhaseHooks.empty, admission = Some(gate))
         first          <- Live.live(source.execute(request, OperationType.Query).either)
         _              <- releaseBlocker.succeed(())
         _              <- blocker.join
@@ -586,7 +586,7 @@ object GraphQLHttpSpec extends ZIOSpecDefault {
                           case _ => ZIO.succeed(Response.json("""{"data":{"value":"ok"}}"""))
                         }
                       }
-        source     <- RemoteSubgraphExecutor.make("remote", remote, backend, config, GatewayWrapper.empty)
+        source     <- RemoteSubgraphExecutor.make("remote", remote, backend, config, PhaseHooks.empty)
         fibers     <- ZIO.foreach(1 to 20)(_ => source.execute(request, OperationType.Query).either.fork)
         _          <- started.await
         _          <- Live.live(ZIO.sleep(250.millis))
@@ -626,7 +626,7 @@ object GraphQLHttpSpec extends ZIOSpecDefault {
                           }
                         }
         backend      <- HttpClientZioBackend.scoped()
-        source       <- RemoteSubgraphExecutor.make("remote", remote, backend, config, GatewayWrapper.empty)
+        source       <- RemoteSubgraphExecutor.make("remote", remote, backend, config, PhaseHooks.empty)
         fibers       <- ZIO.foreach(1 to callers)(_ => source.execute(request, OperationType.Query).either.fork)
         _            <- firstStarted.await
         _            <- Live.live(ZIO.sleep(100.millis))
@@ -646,7 +646,7 @@ object GraphQLHttpSpec extends ZIOSpecDefault {
       for {
         backend     <- HttpClientZioBackend.scoped()
         remote      <- blockedEndpoint(expectedCalls = 1)
-        source      <- RemoteSubgraphExecutor.make("remote", remote.uri, backend, config, GatewayWrapper.empty)
+        source      <- RemoteSubgraphExecutor.make("remote", remote.uri, backend, config, PhaseHooks.empty)
         owner       <- source.execute(request, OperationType.Query).fork
         _           <- remote.started.await
         waiter      <- source.execute(request, OperationType.Query).fork
@@ -667,7 +667,7 @@ object GraphQLHttpSpec extends ZIOSpecDefault {
       for {
         backend      <- HttpClientZioBackend.scoped()
         remote       <- blockedEndpoint(expectedCalls = 1)
-        source       <- RemoteSubgraphExecutor.make("remote", remote.uri, backend, config, GatewayWrapper.empty)
+        source       <- RemoteSubgraphExecutor.make("remote", remote.uri, backend, config, PhaseHooks.empty)
         owner        <- Live.live(source.execute(request, OperationType.Query).timeout(100.millis)).fork
         _            <- remote.started.await
         waiter       <- Live.live(source.execute(request, OperationType.Query).timeout(2.seconds)).fork
@@ -689,7 +689,7 @@ object GraphQLHttpSpec extends ZIOSpecDefault {
         remote     <- blockedEndpoint(expectedCalls = 1)
         scope      <- Scope.make
         source     <- scope.extend(
-                        RemoteSubgraphExecutor.make("remote", remote.uri, backend, config, GatewayWrapper.empty)
+                        RemoteSubgraphExecutor.make("remote", remote.uri, backend, config, PhaseHooks.empty)
                       )
         owner      <- source.execute(request, OperationType.Query).fork
         _          <- remote.started.await
@@ -712,7 +712,7 @@ object GraphQLHttpSpec extends ZIOSpecDefault {
       for {
         backend          <- HttpClientZioBackend.scoped()
         mutations        <- blockedEndpoint(expectedCalls = 2)
-        mutationSource   <- RemoteSubgraphExecutor.make("remote", mutations.uri, backend, config, GatewayWrapper.empty)
+        mutationSource   <- RemoteSubgraphExecutor.make("remote", mutations.uri, backend, config, PhaseHooks.empty)
         mutationFibers   <- ZIO.foreach(1 to 2)(_ => mutationSource.execute(request, OperationType.Mutation).fork)
         mutationsReady   <- Live.live(mutations.started.await.timeout(2.seconds))
         _                <- mutations.release.succeed(())
@@ -730,7 +730,7 @@ object GraphQLHttpSpec extends ZIOSpecDefault {
                               headers.uri,
                               backend,
                               headerConfig,
-                              GatewayWrapper.empty
+                              PhaseHooks.empty
                             )
         headerFibers     <- ZIO.foreach(1 to 2)(_ => headerSource.execute(request, OperationType.Query).fork)
         headersReady     <- Live.live(headers.started.await.timeout(2.seconds))
@@ -744,7 +744,7 @@ object GraphQLHttpSpec extends ZIOSpecDefault {
                               incoming.uri,
                               backend,
                               config.withExecution(_.forwardIncomingHeaders("X-Tenant")),
-                              GatewayWrapper.empty
+                              PhaseHooks.empty
                             )
         incomingFibers   <- ZIO.foreach(List("one", "two"))(tenant =>
                               IncomingRequestHeaders
@@ -758,7 +758,7 @@ object GraphQLHttpSpec extends ZIOSpecDefault {
         _                <- ZIO.foreach(incomingFibers)(_.join)
         incomingTotal    <- incoming.calls.get
         bodies           <- blockedEndpoint(expectedCalls = 3)
-        bodySource       <- RemoteSubgraphExecutor.make("remote", bodies.uri, backend, config, GatewayWrapper.empty)
+        bodySource       <- RemoteSubgraphExecutor.make("remote", bodies.uri, backend, config, PhaseHooks.empty)
         bodyRequests      = List(
                               request.copy(variables = Some(Map("input" -> StringValue("one")))),
                               request.copy(variables = Some(Map("input" -> StringValue("two")))),
