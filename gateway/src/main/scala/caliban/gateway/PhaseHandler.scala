@@ -2,9 +2,11 @@ package caliban.gateway
 
 import zio.{ Exit, Scope, Trace, ZIO }
 
+import scala.collection.mutable.ListBuffer
+
 /**
  * A PhaseHandler is an injectable handler for a specific phase of the gateway execution.
- * For the exact injection points see [[PhaseHooks]] which defines the set of available phases.
+ * For the exact injection points see [[PhaseHooks]] which defines the set of available hooks.
  *
  * On the incoming side a handler receives the phase's event and may modify it; the modified event is what reaches
  * the injection point. On the outgoing side it receives the final event, its own context, and the result of the
@@ -60,14 +62,14 @@ object PhaseHandler {
 
   /**
    * Constructs a PhaseHandler with an incoming and outgoing phase as well as a context type
-   * that can be used to pass information between phases.
+   * that can be used to pass information between hooks.
    */
   def apply[R, Ev, Err, Ctx0, Out](incoming: Ev => ZIO[R, Err, (Ev, Ctx0)])(
     outgoing: (Ev, Ctx0, Out) => ZIO[R, Nothing, Unit]
   ): PhaseHandler[R, Ev, Err, Out] = IncomingOutgoing(incoming, outgoing)
 
   /**
-   * Constructs a PhaseHandler that does not perform any incoming or outgoing phases.
+   * Constructs a PhaseHandler that does not perform any incoming or outgoing hooks.
    */
   def empty[Ev]: PhaseHandler[Any, Ev, Nothing, Any] = Empty.asInstanceOf[PhaseHandler[Any, Ev, Nothing, Any]]
 
@@ -95,9 +97,7 @@ object PhaseHandler {
   def outgoing[R, Ev, Out](
     outgoing: (Ev, Out) => ZIO[R, Nothing, Unit]
   ): PhaseHandler[R, Ev, Nothing, Out] =
-    apply[R, Ev, Nothing, Unit, Out]((ev: Ev) => Exit.succeed((ev, ())))((ev: Ev, _: Unit, out: Out) =>
-      outgoing(ev, out)
-    )
+    Outgoing(outgoing)
 
   /**
    * Constructs a PhaseHandler that wraps another PhaseHandler which has a Scope requirement. This constructor
@@ -122,6 +122,16 @@ object PhaseHandler {
     )(implicit trace: Trace): ZIO[R1, E, A] = incoming(event).flatMap(fn)
   }
 
+  private case class Outgoing[-R, Ev, Out](outgoing: (Ev, Out) => ZIO[R, Nothing, Unit])
+      extends PhaseHandler[R, Ev, Nothing, Out] {
+    override val enabled: Boolean = true
+
+    def runWith[R1 <: R, E >: Nothing, A](event: Ev)(fn: Ev => ZIO[R1, E, A])(
+      result: Exit[E, A] => Out
+    )(implicit trace: Trace): ZIO[R1, E, A] =
+      fn(event).onExit(exit => outgoing(event, result(exit)))
+  }
+
   private case class IncomingOutgoing[-R, Ev, +Err, Out, Ctx0](
     incoming: Ev => ZIO[R, Err, (Ev, Ctx0)],
     outgoing: (Ev, Ctx0, Out) => ZIO[R, Nothing, Unit]
@@ -130,8 +140,10 @@ object PhaseHandler {
 
     def runWith[R1 <: R, E >: Err, A](event: Ev)(fn: Ev => ZIO[R1, E, A])(
       result: Exit[E, A] => Out
-    )(implicit trace: Trace): ZIO[R1, E, A] = incoming(event).flatMap { case (ev, ctx) =>
-      fn(ev).onExit(exit => outgoing(ev, ctx, result(exit)))
+    )(implicit trace: Trace): ZIO[R1, E, A] = ZIO.uninterruptibleMask { restore =>
+      incoming(event).flatMap { case (ev, ctx) =>
+        restore(fn(ev)).onExit(exit => outgoing(ev, ctx, result(exit)))
+      }
     }
   }
 
@@ -155,35 +167,21 @@ object PhaseHandler {
     def runWith[R1 <: R, E >: Err, A](event: Ev)(fn: Ev => ZIO[R1, E, A])(
       result: Exit[E, A] => Out
     )(implicit trace: Trace): ZIO[R1, E, A] = {
-      def loop(
-        remaining: List[PhaseHandler[R, Ev, Err, Out]],
-        ev0: Ev,
-        stack: List[(Ev, Out) => ZIO[R1, Nothing, Unit]]
-      ): ZIO[R1, E, A] =
+      def loop[R2 <: R1](
+        remaining: List[PhaseHandler[R2, Ev, Err, Out]],
+        ev0: Ev
+      ): ZIO[R2, E, A] =
         remaining match {
-          case Nil                                          =>
-            fn(ev0).onExit { exit =>
-              val value = result(exit)
-              ZIO.foreachDiscard(stack.reverse)(_.apply(ev0, value))
-            }
-          case Incoming(incoming) :: next                   =>
-            incoming(ev0).flatMap(loop(next, _, stack))
-          case IncomingOutgoing(incoming, outgoing) :: next =>
-            incoming(ev0).flatMap { case (ev1, ctx) =>
-              val partial = (ev2: Ev, out: Out) => outgoing(ev2, ctx, out)
-              loop(next, ev1, partial :: stack)
-            }
-          case Combined(handlers) :: next                   =>
-            loop(handlers ++ next, ev0, stack)
+          case Nil                        => fn(ev0)
+          case Incoming(incoming) :: next => incoming(ev0).flatMap(loop(next, _))
+          case Combined(handlers) :: next => loop(handlers ++ next, ev0)
           // The scope has to outlive the handler's own outgoing callback, which runs inside `runWith`, so it cannot be
           // shared with the rest of the chain and closed at the end of it.
-          case Scoped(handler) :: next                      =>
-            ZIO.scoped[R1](handler.runWith[Scope with R1, E, A](ev0)((ev1: Ev) => loop(next, ev1, stack))(result))
-          case handler :: next                              =>
-            handler.runWith[R1, E, A](ev0)((ev1: Ev) => loop(next, ev1, stack))(result)
+          case Scoped(handler) :: next    => ZIO.scoped[R2](loop[R2 with Scope](handler :: next, ev0))
+          case handler :: next            => handler.runWith[R2, E, A](ev0)(loop(next, _))(result)
         }
 
-      loop(handlers, event, Nil)
+      loop(handlers, event)
     }
   }
 }
