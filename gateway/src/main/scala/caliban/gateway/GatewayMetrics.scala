@@ -115,11 +115,9 @@ object GatewayMetrics {
   private def enterTrack(
     active: Metric.Gauge[Double],
     labels: Set[MetricLabel]
-  )(implicit trace: Trace) =
-    ZIO.uninterruptible {
-      Clock.nanoTime.flatMap { startedAt =>
-        active.tagged(labels).increment as (startedAt, labels)
-      }
+  )(implicit trace: Trace): ZIO[Any, Nothing, (Long, Set[MetricLabel])] =
+    Clock.nanoTime.flatMap { startedAt =>
+      active.tagged(labels).increment.as(startedAt -> labels)
     }
 
   private def exitTrack(
