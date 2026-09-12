@@ -18,8 +18,8 @@ import zio.test._
  * Gates for the Apollo uplink source: the configuration it is described by, the error cases it can
  * fail with, the cursor and cache the loader carries across polls, and endpoint failover.
  *
- * The loader is stateful across `load` calls by design — `Gateway` builds it once per gateway
- * rather than once per reload cycle — so every test here drives one loader more than once.
+ * The loader is stateful across `load` calls by design, since `Gateway` builds it once per gateway
+ * rather than once per reload cycle, so every test here drives one loader more than once.
  */
 object SupergraphUplinkSpec extends ZIOSpecDefault {
 
@@ -149,7 +149,7 @@ object SupergraphUplinkSpec extends ZIOSpecDefault {
 
   def spec = suite("SupergraphUplinkSpec")(
     // -------------------------------------------------------------------------------------------
-    // Task 2 — Supergraph.Source.Uplink and SupergraphUplinkConfig
+    // Task 2: Supergraph.Source.Uplink and SupergraphUplinkConfig
     // -------------------------------------------------------------------------------------------
     suite("configuration")(
       test("defaults to Apollo's two published endpoints, gcp first") {
@@ -216,7 +216,7 @@ object SupergraphUplinkSpec extends ZIOSpecDefault {
     ),
 
     // -------------------------------------------------------------------------------------------
-    // Task 3 — SupergraphAcquisitionError uplink cases
+    // Task 3: SupergraphAcquisitionError uplink cases
     // -------------------------------------------------------------------------------------------
     suite("error cases")(
       test("every uplink case renders a non-empty diagnostic") {
@@ -255,7 +255,7 @@ object SupergraphUplinkSpec extends ZIOSpecDefault {
     ),
 
     // -------------------------------------------------------------------------------------------
-    // Task 4 — the uplink loader
+    // Task 4: the uplink loader
     // -------------------------------------------------------------------------------------------
     suite("loader")(
       test("sends the SupergraphSdl operation with the api key and graph ref as variables") {
@@ -431,7 +431,7 @@ object SupergraphUplinkSpec extends ZIOSpecDefault {
     ),
 
     // -------------------------------------------------------------------------------------------
-    // Task 5 — endpoint failover
+    // Task 5: endpoint failover
     // -------------------------------------------------------------------------------------------
     suite("failover")(
       test("moves to the next endpoint when the first cannot be reached") {

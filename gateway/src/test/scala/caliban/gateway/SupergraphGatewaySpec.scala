@@ -49,7 +49,7 @@ object SupergraphGatewaySpec extends ZIOSpecDefault {
         |  crew: [Character!]! @join__field(graph: CHARACTERS)""".stripMargin
     )
 
-  /** Parses, but names a graph the enum omits — a decomposition failure rather than a parse failure. */
+  /** Parses, but names a graph the enum omits, so it is a decomposition failure rather than a parse failure. */
   private def malformed(sdl: String): String =
     sdl.replace("@join__type(graph: EPISODES, key: \"name\")", "@join__type(graph: MISSING, key: \"name\")")
 

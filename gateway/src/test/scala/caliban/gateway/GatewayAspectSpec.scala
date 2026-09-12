@@ -252,7 +252,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
         observed.forall(event => event.document.isDefined && event.executionRequest.isDefined),
         scoped == observed,
         // Load-bearing: "scoped-out" precedes "scope-closed", i.e. the scope outlives the handler's own outgoing side.
-        // The direct-before-scoped half is incidental — it falls out of how `Combined` unwinds its stack.
+        // "direct-out" precedes "scoped-out" for the same reason: a scoped handler nests the ones combined after it.
         sequence == Vector("scoped-in", "direct-in", "direct-out", "scoped-out", "scope-closed")
       )
     },

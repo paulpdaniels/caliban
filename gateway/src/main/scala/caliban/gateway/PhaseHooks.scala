@@ -85,8 +85,9 @@ final case class PhaseHooks[-R] private (
  *
  * Each builds hooks that attach a [[PhaseHandler]] to one phase and leave the rest empty. Combine them with `++` and
  * attach the result with `Gateway#withPhaseHooks`, or bundle them into a [[GatewayAspect]]. Combining accumulates
- * rather than replaces: within a phase the incoming sides run in the order they were combined and the outgoing sides in
- * reverse, so several integrations can observe the same phase.
+ * rather than replaces, so several integrations can observe the same phase. Within a phase both the incoming and the
+ * outgoing sides run in the order they were combined. A [[PhaseHandler.scoped]] handler is the exception: it nests the
+ * handlers combined after it, so its outgoing side runs after theirs.
  *
  * Every phase except [[OverrideLabels]] takes handlers that cannot fail, so a handler can never fail the request it
  * observes. Handlers run on the request path, inside whatever timeout the phase they wrap is subject to.
@@ -147,8 +148,8 @@ object PhaseHooks {
     new PhaseHooks[R](subscriptionOverflow = handler)
 
   /**
-   * Brackets execution of one finite operation — a query or a mutation — once [[Routing]] has resolved it, and the
-   * responses produced when a request is rejected during drain or exhausts its deadline. A subscription reaches this
+   * Brackets execution of one query or mutation once [[Routing]] has resolved it, and the responses produced when a
+   * request is rejected during drain or exhausts its deadline. A subscription reaches this
    * phase only on those failure paths; its streaming work is covered by [[SubscriptionSetup]] and
    * [[SubscriptionEvent]]. The event carries the operation name the client supplied.
    */
@@ -165,7 +166,7 @@ object PhaseHooks {
     new PhaseHooks[R](attempt = handler)
 
   /**
-   * Brackets a retried attempt against a remote subgraph — attempt 1 onwards — so it fires once per retry rather than
+   * Brackets a retried attempt against a remote subgraph, attempt 1 onwards, so it fires once per retry rather than
    * once per call. Each occurrence sits inside the same [[SubgraphCall]] and around its own [[Attempt]].
    */
   def Retry[R](handler: PhaseHandler[R, Event.Retry, Nothing, Result]): PhaseHooks[R] =
@@ -174,7 +175,7 @@ object PhaseHooks {
   /**
    * Brackets assembling the response returned to the client: merging subgraph and introspection data, completing a
    * passthrough response, or producing the canned response for a preparation failure, timeout or shutdown. It covers
-   * that assembly rather than the request as a whole — use [[ObserveOperation]] for one observation per request.
+   * that assembly rather than the request as a whole. Use [[ObserveOperation]] for one observation per request.
    */
   def Completion[R](handler: PhaseHandler[R, Event.Completion.type, Nothing, Result]): PhaseHooks[R] =
     new PhaseHooks[R](completion = handler)
@@ -182,13 +183,13 @@ object PhaseHooks {
   /**
    * Brackets one lookup in the prepared-operation cache during [[Routing]]. The event's result says whether it was a
    * hit, a miss whose preparation this request runs, or a wait on preparation already in flight for another request, so
-   * only the last two bracket appreciable work.
+   * only the last two bracket significant work.
    */
   def CacheAccess[R](handler: PhaseHandler[R, Event.CacheAccess, Nothing, Result]): PhaseHooks[R] =
     new PhaseHooks[R](cacheAccess = handler)
 
   /**
-   * Brackets work running under an admission permit — requests, subgraph calls, subscription setups and subscription
+   * Brackets work running under an admission permit: requests, subgraph calls, subscription setups, and subscription
    * events, told apart by the event's kind. The permit is already held when the handler runs, so it measures admitted
    * work and not the time spent queueing for a permit.
    */
@@ -196,7 +197,7 @@ object PhaseHooks {
     new PhaseHooks[R](admission = handler)
 
   /**
-   * Brackets preparation of an incoming request: parsing, validation, policy checks and planning, including the
+   * Brackets preparation of an incoming request: parsing, validation, policy checks, and planning, including the
    * [[CacheAccess]] lookup that may serve it. Preparation runs alongside [[Request]] rather than inside it, so this
    * phase is a sibling of that one. The outgoing [[GatewayWrapper.Result]] says whether preparation succeeded.
    */
@@ -232,7 +233,7 @@ object PhaseHooks {
 
   /**
    * The outermost phase: it brackets the whole request and yields exactly one [[OperationEvent]] per request, whatever
-   * the outcome — including preparation failures, timeouts, shutdown and interruption. See [[OperationEvent]] for what
+   * the outcome, including preparation failures, timeouts, shutdown, and interruption. See [[OperationEvent]] for what
    * each of those carries. A handler that wants timings brackets them itself.
    */
   def ObserveOperation[R](
@@ -245,8 +246,8 @@ object PhaseHooks {
    * `percent(x)` labels itself and ignores unknown labels in the returned set.
    *
    * Runs during [[Routing]], and is the one phase whose handler may fail: a failure fails the request with a resolution
-   * error. Like the header phases it only transforms its event — the labels the returned event has activated are the
-   * ones applied — so an outgoing side receives nothing useful.
+   * error. Like the header phases, it only transforms its event, so an outgoing side receives nothing useful. The
+   * labels the returned event has activated are the ones applied.
    */
   def OverrideLabels[R](handler: PhaseHandler[R, Event.OverrideLabels, Throwable, Any]): PhaseHooks[R] =
     new PhaseHooks[R](overrideLabels = handler)

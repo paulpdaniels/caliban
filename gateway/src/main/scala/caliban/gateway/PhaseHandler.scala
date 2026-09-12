@@ -6,10 +6,9 @@ import zio.{ Exit, Scope, Trace, ZIO }
  * A PhaseHandler is an injectable handler for a specific phase of the gateway execution.
  * For the exact injection points see [[PhaseHooks]] which defines the set of available phases.
  *
- * PhaseHandlers are injected at specific points of execution and they can be used for a variety of purposes.
- * They receive an event type which they can modify during the incoming request processing. This updated event
- * will be forwarded to the injection point. They can also be used in post-processing use cases, where they receive the
- * final event, an internal context, and the result of the wrapped execution.
+ * On the incoming side a handler receives the phase's event and may modify it; the modified event is what reaches
+ * the injection point. On the outgoing side it receives the final event, its own context, and the result of the
+ * wrapped execution.
  *
  * PhaseHandlers can be composed sequentially using the `++` operator.
  */
@@ -17,9 +16,8 @@ sealed abstract class PhaseHandler[-R, Event, +Err, -Res] { self =>
   import PhaseHandler.Combined
 
   /**
-   * Composes two phase handlers sequentially. The first handler will be executed first, followed by the second handler.
-   * The result of the first handler will be passed as input to the second handler. Both handlers will receive the final
-   * event in their outgoing phase.
+   * Composes two phase handlers sequentially. The first handler runs first, and the event its incoming side produces
+   * is the input to the second handler. Both handlers receive the final event in their outgoing phase.
    */
   def ++[R1 <: R, Err1 >: Err, Res1 <: Res](
     that: PhaseHandler[R1, Event, Err1, Res1]
@@ -35,7 +33,7 @@ sealed abstract class PhaseHandler[-R, Event, +Err, -Res] { self =>
       }
 
   /**
-   * Whether this phase handler is enabled, when not enabled, it will not be executed during the gateway execution.
+   * Whether this phase handler is enabled. A disabled handler is skipped during gateway execution.
    */
   def enabled: Boolean
 
@@ -74,8 +72,8 @@ object PhaseHandler {
   def empty[Ev]: PhaseHandler[Any, Ev, Nothing, Any] = Empty.asInstanceOf[PhaseHandler[Any, Ev, Nothing, Any]]
 
   /**
-   * Constructs a PhaseHandler that only performs an incoming phase. This can be useful either for short-circuiting the wrapped phase,
-   * performing some pre-processing side-effects, or for modifying the incoming event.
+   * Constructs a PhaseHandler that only performs an incoming phase, for modifying the incoming event, running
+   * pre-processing side-effects, or short-circuiting the wrapped phase by failing.
    */
   def incoming[R, Ev, Err](
     incoming: Ev => ZIO[R, Err, Ev]
@@ -91,8 +89,8 @@ object PhaseHandler {
     Incoming((ev: Ev) => incoming(ev).as(ev))
 
   /**
-   * Constructs a PhaseHandler that only performs an outgoing phase. This is primarily useful for post-processing side-effects as it doesn't allow
-   * modifying the wrapped event, nor can it fail.
+   * Constructs a PhaseHandler that only performs an outgoing phase, for post-processing side-effects. It cannot
+   * modify the wrapped event and it cannot fail.
    */
   def outgoing[R, Ev, Out](
     outgoing: (Ev, Out) => ZIO[R, Nothing, Unit]

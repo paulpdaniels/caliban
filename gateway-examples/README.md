@@ -39,22 +39,23 @@ import caliban.gateway.{ Gateway, GatewayMetrics }
 val gateway = Gateway.compose(first, rest: _*) @@ GatewayMetrics.aspect
 ```
 
-Keeping metrics opt-in means a gateway without hooks does not perform metric-registry updates, read clocks for metric
-durations, allocate metric labels, or use the instrumented admission path. The aspect records bounded-cardinality request,
-routing, source-call, physical-attempt, retry, cache, admission, in-flight deduplication, body-size, and overdue metrics.
+Opt-in is worth the extra line. A gateway with no hooks attached never updates a metric registry, reads a clock to time
+one, allocates a label, or takes the instrumented admission path. Attach the aspect and it records bounded-cardinality
+metrics for requests, routing, source calls, physical attempts, retries, the cache, admission, in-flight deduplication,
+body sizes, and overdue work.
 
-The `gateway-tracing` module provides `GatewayTracing.aspect`. Aspects compose with `@@`, so tracing and metrics can be
-installed together:
+The `gateway-tracing` module provides `GatewayTracing.aspect`. Aspects compose with `@@`, so you can install tracing and
+metrics together:
 
 ```scala
 import caliban.gateway.GatewayMetrics
 import caliban.gateway.tracing.GatewayTracing
 
-val observed = Gateway.compose(first, rest: _*) @@ (GatewayMetrics.aspect @@ GatewayTracing.aspect)
+val observed = Gateway.compose(first, rest: _*) @@ GatewayMetrics.aspect @@ GatewayTracing.aspect
 ```
 
-An aspect is just a bundle of `PhaseHooks`. To attach hooks of your own, skip the aspect and add them to the gateway
-directly; hooks accumulate, so this composes with any aspect applied before or after:
+An aspect is only a bundle of `PhaseHooks`. To attach hooks of your own, skip the aspect and add them to the gateway
+directly. Hooks accumulate, so this composes with any aspect applied before or after:
 
 ```scala
 import caliban.gateway.{ Gateway, GatewayMetrics, PhaseHandler, PhaseHooks }
@@ -68,13 +69,21 @@ val logged = Gateway.compose(first, rest: _*)
   ) @@ GatewayMetrics.aspect
 ```
 
-`GatewayWrapper.Event` is one lifecycle algebra; `Event.Attempt` represents each physical HTTP attempt, including attempt zero.
-A phase handler sees its own event type, so `PhaseHooks.Attempt` receives an `Event.Attempt` without matching on the whole
-algebra. `PhaseHandler.incoming` runs before the phase, `PhaseHandler.outgoing` sees its typed result, `PhaseHandler.apply`
-does both and can carry state between them, and `PhaseHandler.around` encloses the phase effect for integrations such as
-spans that need it. This keeps result metadata inside the span or metric scope that owns it and lets custom logging,
-profiling, policy, or telemetry integrations use the same seam.
+`GatewayWrapper.Event` is one lifecycle algebra, with `Event.Attempt` standing for each physical HTTP attempt, attempt zero
+included. A phase handler sees only its own event type, so `PhaseHooks.Attempt` receives an `Event.Attempt` and never has to
+match on the whole algebra.
 
-Events expose bounded metadata only and never include raw GraphQL documents, variables, headers, or response bodies. Closed
-event values such as operation type, cache result, admission kind, and deduplication result can be matched exhaustively; request
-deadlines complete with `GatewayWrapper.Outcome.Timeout`.
+Pick the constructor that matches how much of the phase you need:
+
+- `PhaseHandler.incoming` runs before the phase and can rewrite the event. `incomingDiscard` is the same without the rewrite.
+- `PhaseHandler.outgoing` sees the phase's typed result.
+- `PhaseHandler.apply` does both and can carry state from one side to the other, which is what brackets the phase effect.
+- `PhaseHandler.scoped` binds a `Scope` to that bracket, so a resource acquired on the way in outlives the outgoing side.
+
+`GatewayTracing` is built from the last two. It opens a span on the way in and records the phase's outcome on it on the
+way out. That keeps result metadata inside the span or metric scope that owns it, and gives custom logging, profiling, policy, and
+telemetry integrations the same seam to hang off.
+
+Events carry bounded metadata only, never raw GraphQL documents, variables, headers, or response bodies. Closed event values
+such as operation type, cache result, admission kind, and deduplication result match exhaustively. A request that hits its
+deadline completes with `GatewayWrapper.Outcome.Timeout`.

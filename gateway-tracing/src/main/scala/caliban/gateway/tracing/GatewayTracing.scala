@@ -27,9 +27,9 @@ object GatewayTracing {
    * The spans this integration records, as phase hooks.
    *
    * The request-level SERVER span hangs off `observeOperation`, the outermost phase, so routing and the operation cache
-   * fall inside it rather than beside it. Phases that carry no span of their own — the request phase itself, cache
-   * access, admission, subscription admission, termination and overflow, override labels and outbound headers — are
-   * left untouched.
+   * fall inside it rather than beside it. Some phases carry no span of their own and are left untouched: the request
+   * phase itself, cache access, admission, subscription admission, termination and overflow, override labels and
+   * outbound headers.
    */
   val hooks: PhaseHooks[Tracing] =
     PhaseHooks.ObserveOperation(

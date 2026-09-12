@@ -216,9 +216,7 @@ private[gateway] final class RemoteSubgraphExecutor[-R](
     attempt: Int
   )(implicit trace: Trace): ZIO[R, SubgraphExecutor.Failure, GraphQLResponse[CalibanError]] = {
     val transport   =
-      phases.attemptHeaders.runWith(Event.AttemptHeaders(name, attempt, headers))(attempt =>
-        send(body, attempt.headers)
-      )(_ => ())
+      phases.attemptHeaders.runWith(Event.AttemptHeaders(name, attempt, headers))(ev => send(body, ev.headers))(_ => ())
     val observed    =
       if (!phases.attempt.enabled) transport
       else
