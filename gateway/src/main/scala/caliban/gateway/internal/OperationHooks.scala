@@ -16,7 +16,7 @@ private[gateway] final class OperationHooks[-R](
   securityRequirements: OperationPlan => List[SecurityRequirement],
   resolver: Option[OperationResolver[R]],
   policy: Option[OperationPolicy[R]],
-  phases: PhaseHooks[R]
+  hooks: PhaseHooks[R]
 ) {
 
   val cacheable: Boolean = resolver.forall(_.cacheable)
@@ -65,13 +65,14 @@ private[gateway] final class OperationHooks[-R](
     if (labels.isEmpty) ZIO.succeed(Set.empty)
     else {
       val unresolved = labels.map(_.value)
-      OperationHooks
-        .run(
-          phases.overrideLabels
+      val hook       =
+        if (!hooks.overrideLabels.enabled) Exit.succeed(Set.empty[String])
+        else
+          hooks.overrideLabels
             .runWith(Event.OverrideLabels(request, unresolved))(Exit.succeed)(_ => ())
-            .map(_.active),
-          OperationHooks.OverrideLabelResolutionFailure
-        )
+            .map(_.active)
+      OperationHooks
+        .run(hook, OperationHooks.OverrideLabelResolutionFailure)
         .map(_.intersect(unresolved).map(OverrideLabel.apply))
     }
 }

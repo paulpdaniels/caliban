@@ -4,7 +4,6 @@ import caliban.QuickAdapter
 import caliban.gateway.{ Gateway, RemoteGraphQLConfig, Supergraph }
 import zio.Config.Secret
 import zio.{ Console, ZIO, ZIOAppDefault }
-import sttp.client4._
 
 object ManagedGatewayApp extends ZIOAppDefault {
   private case class Config(
@@ -17,7 +16,7 @@ object ManagedGatewayApp extends ZIOAppDefault {
       .nested("APOLLO")
 
   private val remoteConfig =
-    RemoteGraphQLConfig.default.withExecution(_.forwardIncomingHeaders("Authorization", "Authorization"))
+    RemoteGraphQLConfig.default.withExecution(_.forwardIncomingHeaders("Authorization"))
 
   def run =
     for {

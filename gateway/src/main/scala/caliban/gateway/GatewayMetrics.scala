@@ -107,8 +107,9 @@ object GatewayMetrics {
     detailLabels: Result => Set[MetricLabel],
     totalLabels: Result => Set[MetricLabel]
   ): PhaseHandler[Any, Event, Nothing, Result] =
-    PhaseHandler((ev: Event) => enterTrack(active, labels(ev)).map(ev -> _))((ev, ctx: Long, out: Result) =>
-      exitTrack(ctx, active, duration, total, labels(ev), detailLabels, totalLabels, out)
+    PhaseHandler((ev: Event) => enterTrack(active, labels(ev)).map(ev -> _))(
+      (_, ctx: (Long, Set[MetricLabel]), out: Result) =>
+        exitTrack(ctx._1, active, duration, total, ctx._2, detailLabels, totalLabels, out)
     )
 
   private def enterTrack(
@@ -117,7 +118,7 @@ object GatewayMetrics {
   )(implicit trace: Trace) =
     ZIO.uninterruptible {
       Clock.nanoTime.flatMap { startedAt =>
-        active.tagged(labels).increment as startedAt
+        active.tagged(labels).increment as (startedAt, labels)
       }
     }
 

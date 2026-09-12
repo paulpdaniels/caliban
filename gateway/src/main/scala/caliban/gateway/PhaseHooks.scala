@@ -95,7 +95,7 @@ final case class PhaseHooks[-R] private (
  * observes. Handlers run on the request path, inside whatever timeout the phase they wrap is subject to.
  *
  * A handler's outgoing side receives the value the phase produces: the phase's own [[PhaseHooks.Result]] for most
- * phases, an [[OperationEvent]] for [[observeOperation]]. Phases that only transform their event produce nothing
+ * hooks, an [[OperationEvent]] for [[observeOperation]]. hooks that only transform their event produce nothing
  * useful for an outgoing side, and are noted as such below.
  */
 object PhaseHooks {
@@ -248,7 +248,7 @@ object PhaseHooks {
    * `percent(x)` labels itself and ignores unknown labels in the returned set.
    *
    * Runs during [[routing]], and is the one phase whose handler may fail: a failure fails the request with a resolution
-   * error. Like the header phases, it only transforms its event, so an outgoing side receives nothing useful. The
+   * error. Like the header hooks, it only transforms its event, so an outgoing side receives nothing useful. The
    * labels the returned event has activated are the ones applied.
    */
   def overrideLabels[R](handler: PhaseHandler[R, Event.OverrideLabels, Throwable, Any]): PhaseHooks[R] =

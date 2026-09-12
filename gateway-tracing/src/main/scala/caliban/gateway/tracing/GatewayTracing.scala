@@ -26,7 +26,7 @@ object GatewayTracing {
    * The spans this integration records, as phase hooks.
    *
    * The request-level SERVER span hangs off `observeOperation`, the outermost phase, so routing and the operation cache
-   * fall inside it rather than beside it. Some phases carry no span of their own and are left untouched: the request
+   * fall inside it rather than beside it. Some hookscarry no span of their own and are left untouched: the request
    * phase itself, cache access, admission, subscription admission, termination and overflow, override labels and
    * outbound headers.
    */
@@ -111,7 +111,7 @@ object GatewayTracing {
    * Opens a span around one phase and records that phase's own outcome on it before the span closes.
    *
    * The span has to enclose the phase effect, which is what a [[PhaseHandler]] with both an incoming and an outgoing
-   * side is for; the cheaper incoming-only handlers cannot express it. `result` adapts phases that report something
+   * side is for; the cheaper incoming-only handlers cannot express it. `result` adapts hooksthat report something
    * other than a [[PhaseHooks.Result]], such as the [[OperationEvent]] of `observeOperation`.
    */
   private def spanningWith[Ev <: Event, Res](

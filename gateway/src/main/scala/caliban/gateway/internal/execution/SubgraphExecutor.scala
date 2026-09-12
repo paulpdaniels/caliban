@@ -35,20 +35,20 @@ private[gateway] trait SubgraphExecutor[-R] {
 private[gateway] final class ObservedSubgraphExecutor[R](
   name: String,
   underlying: SubgraphExecutor[R],
-  phases: PhaseHooks[R]
+  hooks: PhaseHooks[R]
 ) extends SubgraphExecutor[R] {
   val errorPolicy: ErrorPolicy = underlying.errorPolicy
 
   override def forSubscription(implicit trace: Trace)                    =
-    underlying.forSubscription.map(new ObservedSubgraphExecutor(name, _, phases))
+    underlying.forSubscription.map(new ObservedSubgraphExecutor(name, _, hooks))
   override def subscribe(request: GraphQLRequest)(implicit trace: Trace) = underlying.subscribe(request)
 
   def execute(request: GraphQLRequest, operationType: OperationType)(implicit
     trace: Trace
   ): ZIO[R, SubgraphExecutor.Failure, GraphQLResponse[CalibanError]] =
-    if (!phases.enabled) underlying.execute(request, operationType)
+    if (!hooks.enabled) underlying.execute(request, operationType)
     else
-      phases.subgraphCall.run(Event.SubgraphCall(name, operationType))(underlying.execute(request, operationType))(
+      hooks.subgraphCall.run(Event.SubgraphCall(name, operationType))(underlying.execute(request, operationType))(
         SubgraphExecutor.resultFromExit
       )
 

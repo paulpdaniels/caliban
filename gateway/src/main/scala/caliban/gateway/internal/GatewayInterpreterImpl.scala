@@ -17,7 +17,7 @@ private[gateway] final class GatewayInterpreterImpl[-R](
   operations: OperationPreparation[R],
   executor: PlanExecutor[R],
   control: GatewayExecutionControl[R],
-  phases: PhaseHooks[R],
+  hooks: PhaseHooks[R],
   reservation: Option[GatewayExecutionControl.Lease] = None
 ) extends GatewayInterpreter[R] {
 
@@ -31,7 +31,7 @@ private[gateway] final class GatewayInterpreterImpl[-R](
    */
   def reserve(implicit trace: Trace): UIO[Option[GatewayInterpreterImpl[R]]] =
     control.reserve.map(
-      _.map(lease => new GatewayInterpreterImpl(operations, executor, control, phases, Some(lease)))
+      _.map(lease => new GatewayInterpreterImpl(operations, executor, control, hooks, Some(lease)))
     )
 
   def retireSubscriptions(implicit trace: Trace): UIO[Unit] = control.subscriptions.stop(SubscriptionTermination.Reload)
@@ -47,7 +47,7 @@ private[gateway] final class GatewayInterpreterImpl[-R](
       )
 
   def executeRequest(request: GraphQLRequest)(implicit trace: Trace): URIO[R, GraphQLResponse[CalibanError]] =
-    if (phases.enabled) executeObservedRequest(request)
+    if (hooks.enabled) executeObservedRequest(request)
     else
       control.runRequest(
         operations.prepare(request).foldZIO(failPreparation, executePrepared),
@@ -66,11 +66,11 @@ private[gateway] final class GatewayInterpreterImpl[-R](
       response: GraphQLResponse[CalibanError],
       outcome: Outcome
     ): URIO[R, RequestResult] =
-      phases.completion.run(Event.Completion)(
+      hooks.completion.run(Event.Completion)(
         GraphQLResponseContext.markServerError(failure).as(RequestResult(response, outcome, None))
       )(classifyRequestResult)
 
-    val preparation = phases.routing
+    val preparation = hooks.routing
       .run(Event.Routing)(operations.prepare(request))(
         Result.fromExit(_)(_ => Result(Outcome.Success), error => Result(preparationOutcome(error)))
       )
@@ -82,7 +82,7 @@ private[gateway] final class GatewayInterpreterImpl[-R](
       )(
         _.fold(
           error =>
-            phases
+            hooks
               .observeCompletion(failPreparation(error))
               .map(RequestResult(_, preparationOutcome(error), None)),
           prepared =>
@@ -100,7 +100,7 @@ private[gateway] final class GatewayInterpreterImpl[-R](
         completion(ServerFailure.Unavailable, requestShutdownResponse, Outcome.RequestError)
       )(classifyRequestResult)
 
-    phases.observeOperation
+    hooks.observeOperation
       .run(Event.ObserveOperation(request = request))(execution)(observedOperation)
       .map(_.response)
   }

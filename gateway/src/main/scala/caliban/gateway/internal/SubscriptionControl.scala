@@ -12,7 +12,7 @@ import zio.stream.ZStream
 private[gateway] final class SubscriptionControl[-R] private (
   config: GatewaySubscriptionConfig,
   work: AdmissionGate[R],
-  phases: PhaseHooks[R],
+  hooks: PhaseHooks[R],
   state: Ref[SubscriptionControl.State],
   drained: Promise[Nothing, Unit]
 ) {
@@ -58,7 +58,7 @@ private[gateway] final class SubscriptionControl[-R] private (
                                            }
                                _        <-
                                  ZIO.foreachDiscard(admitted)(error =>
-                                   notify(Event.SubscriptionAdmission(false))(phases.subscriptionAdmission) *> ZIO.fail(
+                                   notify(Event.SubscriptionAdmission(false))(hooks.subscriptionAdmission) *> ZIO.fail(
                                      error
                                    )
                                  )
@@ -68,7 +68,7 @@ private[gateway] final class SubscriptionControl[-R] private (
                                                reason.get
                                                  .flatMap(why =>
                                                    notify(Event.SubscriptionTerminated(why, ended - started))(
-                                                     phases.subscriptionTerminated
+                                                     hooks.subscriptionTerminated
                                                    )
                                                  )
                                                  .ensuring(state.modify { value =>
@@ -77,7 +77,7 @@ private[gateway] final class SubscriptionControl[-R] private (
                                                  }.flatMap(empty => drained.succeed(()).when(empty).unit))
                                              }.provideEnvironment(env)
                                            }
-                               _        <- notify(Event.SubscriptionAdmission(true))(phases.subscriptionAdmission)
+                               _        <- notify(Event.SubscriptionAdmission(true))(hooks.subscriptionAdmission)
                              } yield (signal, reason)
                            }
         (signal, reason) = admittedState
@@ -86,7 +86,7 @@ private[gateway] final class SubscriptionControl[-R] private (
                              .observedAs[R1 with Scope, Throwable, ZStream[Any, Throwable, GraphQLResponse[CalibanError]]](
                                AdmissionKind.SubscriptionSetup
                              ) {
-                               phases.subscriptionSetup
+                               hooks.subscriptionSetup
                                  .run[R1 with Scope, Throwable, ZStream[Any, Throwable, GraphQLResponse[CalibanError]]](
                                    Event.SubscriptionSetup
                                  )(sourceScope.extend[R1](open))(
@@ -116,7 +116,7 @@ private[gateway] final class SubscriptionControl[-R] private (
                              if (cause.isInterruptedOnly) ZIO.unit
                              else
                                ZIO.whenDiscard(cause.failureOption.exists(_ eq SubscriptionTermination.Overflow))(
-                                 notify(Event.SubscriptionOverflow)(phases.subscriptionOverflow)
+                                 notify(Event.SubscriptionOverflow)(hooks.subscriptionOverflow)
                                ) *> signal
                                  .succeed(cause.failureOption match {
                                    case Some(e: CalibanError.ExecutionError) => e
@@ -130,7 +130,7 @@ private[gateway] final class SubscriptionControl[-R] private (
                                .observedAs[R1, Nothing, GraphQLResponse[CalibanError]](
                                  AdmissionKind.SubscriptionEvent
                                ) {
-                                 phases.subscriptionEvent.run[R1, Nothing, GraphQLResponse[CalibanError]](
+                                 hooks.subscriptionEvent.run[R1, Nothing, GraphQLResponse[CalibanError]](
                                    Event.SubscriptionEvent
                                  )(
                                    process(event)
@@ -171,11 +171,11 @@ private[gateway] object SubscriptionControl {
   def make[R](
     config: GatewaySubscriptionConfig,
     work: AdmissionGate[R],
-    phases: PhaseHooks[R]
+    hooks: PhaseHooks[R]
   )(implicit trace: Trace): ZIO[Scope, Nothing, SubscriptionControl[R]] =
     for {
       state   <- Ref.make(State(None, Map.empty))
       drained <- Promise.make[Nothing, Unit]
-      control  = new SubscriptionControl(config, work, phases, state, drained)
+      control  = new SubscriptionControl(config, work, hooks, state, drained)
     } yield control
 }

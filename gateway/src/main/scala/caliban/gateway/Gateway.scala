@@ -330,7 +330,7 @@ object Gateway {
     subgraph: Subgraph[R],
     backend: Option[SttpClient],
     remoteErrorMessages: Boolean,
-    phases: PhaseHooks[R]
+    hooks: PhaseHooks[R]
   )(implicit trace: Trace): ZIO[Scope, SubgraphBuildError, LoadedSubgraph[R]] =
     subgraph.source match {
       case Source.Remote(endpoint, schema, federation, config) =>
@@ -362,7 +362,7 @@ object Gateway {
                                 endpoint,
                                 client,
                                 config,
-                                phases,
+                                hooks,
                                 remoteErrorMessages
                               )
         } yield LoadedSubgraph(preparedSubgraph, executor)

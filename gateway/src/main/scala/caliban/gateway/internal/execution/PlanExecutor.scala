@@ -30,7 +30,7 @@ import scala.collection.mutable
 private[gateway] final class PlanExecutor[-R](
   graph: ComposedGraph,
   subgraphExecutors: Map[String, SubgraphExecutor[R]],
-  phases: PhaseHooks[R]
+  hooks: PhaseHooks[R]
 ) {
   private val rootType: RootType                  = graph.rootType
   private lazy val introspection: RootSchema[Any] = Introspector.introspect[Any](rootType)
@@ -74,7 +74,7 @@ private[gateway] final class PlanExecutor[-R](
         executor
           .execute(resolvedRequest, plan.operation)
           .flatMap(response =>
-            phases.observeCompletion(
+            hooks.observeCompletion(
               ZIO.succeed(
                 completeSourceResponse(
                   prepared.completion,
@@ -85,13 +85,13 @@ private[gateway] final class PlanExecutor[-R](
               )
             )
           )
-          .catchAll(_ => phases.observeCompletion(ZIO.succeed(singleSourceFailure(prepared))))
+          .catchAll(_ => hooks.observeCompletion(ZIO.succeed(singleSourceFailure(prepared))))
       case None               =>
         val introspectionFields = plan.introspectionFields
         if (introspectionFields.isEmpty)
           executeRemote(prepared, execution, resolvedRequest)
             .flatMap(remote =>
-              phases.observeCompletion(
+              hooks.observeCompletion(
                 ZIO.succeed(assemble(prepared, remote, GraphQLResponse(ObjectValue.empty, Nil)))
               )
             )
@@ -99,7 +99,7 @@ private[gateway] final class PlanExecutor[-R](
           executeRemote(prepared, execution, resolvedRequest)
             .zipPar(executeIntrospection(execution, introspectionFields))
             .flatMap { case (remote, local) =>
-              phases.observeCompletion(ZIO.succeed(assemble(prepared, remote, local)))
+              hooks.observeCompletion(ZIO.succeed(assemble(prepared, remote, local)))
             }
     }
 
@@ -113,7 +113,7 @@ private[gateway] final class PlanExecutor[-R](
       .foreach(subgraphExecutors) { case (name, executor) =>
         (if (used(name)) executor.forSubscription else ZIO.succeed(executor)).map(name -> _)
       }
-      .map(new PlanExecutor(graph, _, phases))
+      .map(new PlanExecutor(graph, _, hooks))
   }
 
   def subscribe(prepared: PreparedPlan, execution: ExecutionRequest, resolvedRequest: GraphQLRequest)(implicit

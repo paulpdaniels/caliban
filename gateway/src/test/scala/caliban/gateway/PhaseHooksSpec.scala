@@ -10,7 +10,7 @@ import caliban.{ graphQL, RootResolver }
 import caliban.schema.Schema.auto._
 import sttp.model.Header
 import zio.{ Duration, Promise, Ref, Scope, ZIO }
-import zio.test.{ assertTrue, Spec, TestAspect, TestClock, TestEnvironment, ZIOSpecDefault }
+import zio.test.{ assert, assertTrue, Assertion, Spec, TestAspect, TestClock, TestEnvironment, ZIOSpecDefault }
 import zio.stream.ZStream
 
 object PhaseHooksSpec extends ZIOSpecDefault {
@@ -329,6 +329,24 @@ object PhaseHooksSpec extends ZIOSpecDefault {
         sequence == Vector("direct-in", "direct-out"),
         sent.isEmpty
       )
+    },
+    test("executes the outgoing phase on interrupt of effect") {
+      for {
+        count <- Ref.make(0)
+        // Should execute both incoming and outgoing phases
+        first  = PhaseHooks.request(
+                   PhaseHandler((ev: Event.Request) => ZIO.succeed(ev -> ()))((_, _, _) => count.incrementAndGet.unit)
+                 )
+        // Interrupts on the incoming phase triggering fork to halt
+        second =
+          PhaseHooks.request(
+            PhaseHandler((ev: Event.Request) => ZIO.interrupt.as(ev -> ()))((_, _, _) => count.incrementAndGet.unit)
+          )
+        hooks  = first ++ second
+        f     <- hooks.request.run(Event.Request(Some("Interrupt")))(ZIO.unit)(PhaseHooks.Result.classifyExit).exit.fork
+        exit  <- f.join
+        c     <- count.get
+      } yield assertTrue(c == 1) && assert(exit)(Assertion.isInterrupted)
     }
   ).provideSomeShared[Scope](testServer, stubIds) @@ TestAspect.sequential
 

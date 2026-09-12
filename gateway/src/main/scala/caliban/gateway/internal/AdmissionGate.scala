@@ -7,7 +7,7 @@ import zio.{ Scope, Semaphore, Trace, UIO, ZIO }
 private[gateway] final class AdmissionGate[-R] private (
   semaphore: Semaphore,
   kind: AdmissionKind,
-  phases: PhaseHooks[R]
+  hooks: PhaseHooks[R]
 ) {
 
   def apply[R0, E, A](effect: ZIO[R0, E, A])(implicit trace: Trace): ZIO[R0, E, A] =
@@ -34,13 +34,13 @@ private[gateway] final class AdmissionGate[-R] private (
   private def observeAs[R1 <: R, E, A](work: AdmissionKind)(
     effect: ZIO[R1, E, A]
   )(implicit trace: Trace): ZIO[R1, E, A] =
-    if (!phases.admission.enabled) effect else phases.admission.run(Event.Admission(work))(effect)(Result.classifyExit)
+    if (!hooks.admission.enabled) effect else hooks.admission.run(Event.Admission(work))(effect)(Result.classifyExit)
 
 }
 
 private[gateway] object AdmissionGate {
-  def make[R](limit: Int, kind: AdmissionKind, phases: PhaseHooks[R])(implicit
+  def make[R](limit: Int, kind: AdmissionKind, hooks: PhaseHooks[R])(implicit
     trace: Trace
   ): UIO[AdmissionGate[R]] =
-    Semaphore.make(limit.toLong).map(new AdmissionGate(_, kind, phases))
+    Semaphore.make(limit.toLong).map(new AdmissionGate(_, kind, hooks))
 }

@@ -113,7 +113,7 @@ private[gateway] final class RemoteSubgraphExecutor[-R](
   responseStructureLimits: RemoteSubgraphExecutor.ResponseStructureLimits,
   queryCalls: Option[RemoteSubgraphExecutor.InFlightQueryDeduplicator],
   admission: Option[AdmissionGate[R]],
-  phases: PhaseHooks[R],
+  hooks: PhaseHooks[R],
   remoteErrorMessages: Boolean = false,
   fixedHeaders: Option[List[Header]] = None
 ) extends SubgraphExecutor[R] {
@@ -143,14 +143,15 @@ private[gateway] final class RemoteSubgraphExecutor[-R](
                    })
                    else ZIO.succeed(Nil)
       effectful <- config.effectfulHeaders.mapError(SubgraphExecutor.HeaderFailure(_))
-      values    <-
-        phases.outboundHeaders.runWith(Event.OutboundHeaders(name, outboundHeaders(incoming, effectful)))(Exit.succeed)(
-          (_: Exit[Nothing, Event.OutboundHeaders]) => ()
-        )
-    } yield values.headers)(ZIO.succeed(_))
+      headers   <- if (!hooks.outboundHeaders.enabled) Exit.succeed(outboundHeaders(incoming, effectful))
+                   else
+                     hooks.outboundHeaders.runWith(Event.OutboundHeaders(name, outboundHeaders(incoming, effectful)))(
+                       ev => Exit.succeed(ev.headers)
+                     )((_: Exit[Nothing, List[Header]]) => ())
+    } yield headers)(ZIO.succeed(_))
 
   override def forSubscription(implicit trace: Trace): ZIO[R, SubgraphExecutor.Failure, SubgraphExecutor[R]] =
-    headers.map(values => copied(admission, phases, Some(values)))
+    headers.map(values => copied(admission, hooks, Some(values)))
 
   override def subscribe(
     request: GraphQLRequest
@@ -158,9 +159,7 @@ private[gateway] final class RemoteSubgraphExecutor[-R](
     val open = for {
       values <- headers.mapError(_ => SubscriptionTermination.Source)
       traced <-
-        phases.attemptHeaders.runWith(Event.AttemptHeaders(name, 0, values))(Exit.succeed)((_: Exit[Nothing, Any]) =>
-          ()
-        )
+        hooks.attemptHeaders.runWith(Event.AttemptHeaders(name, 0, values))(Exit.succeed)((_: Exit[Nothing, Any]) => ())
       body   <- ZIO
                   .fromEither(encode(request.copy(extensions = None)))
                   .mapError(_ => SubscriptionTermination.Source)
@@ -193,7 +192,7 @@ private[gateway] final class RemoteSubgraphExecutor[-R](
 
   private def copied[R1 <: R](
     admission: Option[AdmissionGate[R1]],
-    phases: PhaseHooks[R1],
+    hooks: PhaseHooks[R1],
     fixedHeaders: Option[List[Header]]
   ): RemoteSubgraphExecutor[R1] =
     new RemoteSubgraphExecutor(
@@ -204,7 +203,7 @@ private[gateway] final class RemoteSubgraphExecutor[-R](
       responseStructureLimits,
       queryCalls,
       admission,
-      phases,
+      hooks,
       remoteErrorMessages,
       fixedHeaders
     )
@@ -216,11 +215,11 @@ private[gateway] final class RemoteSubgraphExecutor[-R](
     attempt: Int
   )(implicit trace: Trace): ZIO[R, SubgraphExecutor.Failure, GraphQLResponse[CalibanError]] = {
     val transport   =
-      phases.attemptHeaders.runWith(Event.AttemptHeaders(name, attempt, headers))(ev => send(body, ev.headers))(_ => ())
+      hooks.attemptHeaders.runWith(Event.AttemptHeaders(name, attempt, headers))(ev => send(body, ev.headers))(_ => ())
     val observed    =
-      if (!phases.attempt.enabled) transport
+      if (!hooks.attempt.enabled) transport
       else
-        phases.attempt.run(Event.Attempt(name, attempt, body.length.toLong, endpoint.host, endpoint.port))(transport)(
+        hooks.attempt.run(Event.Attempt(name, attempt, body.length.toLong, endpoint.host, endpoint.port))(transport)(
           Result.fromExit(_)(
             value =>
               Result(
@@ -239,9 +238,9 @@ private[gateway] final class RemoteSubgraphExecutor[-R](
         )
     val sendAttempt = observed.map(_.response).mapError(_.failure)
     val call        =
-      if (attempt == 0 || !phases.retry.enabled) sendAttempt
+      if (attempt == 0 || !hooks.retry.enabled) sendAttempt
       else
-        phases.retry.run(Event.Retry(name, attempt))(sendAttempt)(
+        hooks.retry.run(Event.Retry(name, attempt))(sendAttempt)(
           SubgraphExecutor.resultFromExit
         )
 
@@ -404,7 +403,7 @@ private[gateway] object RemoteSubgraphExecutor {
     endpoint: Uri,
     backend: SttpClient,
     config: RemoteGraphQLConfig[R],
-    phases: PhaseHooks[R],
+    hooks: PhaseHooks[R],
     remoteErrorMessages: Boolean = false,
     admission: Option[AdmissionGate[R]] = None
   )(implicit trace: Trace): ZIO[Scope, Nothing, RemoteSubgraphExecutor[R]] =
@@ -420,7 +419,7 @@ private[gateway] object RemoteSubgraphExecutor {
               AdmissionGate.make(
                 config.execution.maxConcurrentCalls,
                 PhaseHooks.AdmissionKind.Subgraph,
-                phases
+                hooks
               )
             )(ZIO.succeed(_))
           )
@@ -433,7 +432,7 @@ private[gateway] object RemoteSubgraphExecutor {
               ResponseStructureLimits.default,
               calls,
               Some(admission),
-              phases,
+              hooks,
               remoteErrorMessages
             )
           }

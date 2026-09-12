@@ -223,7 +223,7 @@ val progressiveOverrides = PhaseHooks.OverrideLabels(
   }
 )
 
-val gateway = Gateway.compose(products, reviews).withPhaseHooks(progressiveOverrides)
+val gateway = Gateway.compose(products, reviews) @@ progressiveOverrides
 ```
 
 The event carries the request and, in `reached`, the custom labels the selected operation actually touched. Pass `activate` the subset that should use the overriding subgraph; anything you activate that the operation did not reach is ignored. Labels nobody activates fall back to the original subgraph, which is also what happens when you attach no hook at all. `activate` accumulates rather than replaces, so several hooks can each contribute without clearing one another.

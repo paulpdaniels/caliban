@@ -290,18 +290,18 @@ private[gateway] object OperationPreparation {
   def make[R](
     rootType: RootType,
     planner: OperationPlanner,
-    hooks: OperationHooks[R],
+    operationHooks: OperationHooks[R],
     config: GatewayConfig,
-    phases: PhaseHooks[R],
+    phaseHooks: PhaseHooks[R],
     estimateCost: (ExecutionRequest, OperationPlan) => Either[String, Long]
   )(implicit trace: Trace): UIO[OperationPreparation[R]] =
     OperationCache
-      .make[CacheKey, CalibanError, CachedOperation, R](config.maxOperationCacheWeight, phases)
+      .make[CacheKey, CalibanError, CachedOperation, R](config.maxOperationCacheWeight, phaseHooks)
       .map(cache =>
         new OperationPreparation(
           rootType,
           planner,
-          hooks,
+          operationHooks,
           cache,
           config.maxOperationCost,
           estimateCost
