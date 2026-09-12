@@ -251,7 +251,7 @@ object PhaseHooksSpec extends ZIOSpecDefault {
           Vector(Some(OperationType.Query) -> PhaseHooks.Outcome.Success),
         observed.forall(event => event.document.isDefined && event.executionRequest.isDefined),
         scoped == observed,
-        // Load-bearing: "scoped-out" precedes "scope-closed", i.e. the scope outlives the handler's own outgoing side.
+        //  "scoped-out" precedes "scope-closed", i.e. the scope outlives the handler's own outgoing side.
         // "direct-out" precedes "scoped-out" for the same reason: a scoped handler nests the ones combined after it.
         sequence == Vector("scoped-in", "direct-in", "direct-out", "scoped-out", "scope-closed")
       )
