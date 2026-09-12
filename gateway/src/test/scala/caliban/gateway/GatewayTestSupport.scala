@@ -303,19 +303,19 @@ private[gateway] object GatewayTestSupport {
   }
 
   private def everyResultPhase(recorder: PhaseRecorder): PhaseHooks[Any] =
-    PhaseHooks.SubscriptionSetup(recorder.handler) ++
-      PhaseHooks.SubscriptionEvent(recorder.handler) ++
-      PhaseHooks.SubscriptionTerminated(recorder.handler) ++
-      PhaseHooks.SubscriptionAdmission(recorder.handler) ++
-      PhaseHooks.SubscriptionOverflow(recorder.handler) ++
-      PhaseHooks.Request(recorder.handler) ++
-      PhaseHooks.Routing(recorder.handler) ++
-      PhaseHooks.SubgraphCall(recorder.handler) ++
-      PhaseHooks.Attempt(recorder.handler) ++
-      PhaseHooks.Retry(recorder.handler) ++
-      PhaseHooks.Completion(recorder.handler) ++
-      PhaseHooks.CacheAccess(recorder.handler) ++
-      PhaseHooks.Admission(recorder.handler)
+    PhaseHooks.subscriptionSetup(recorder.handler) ++
+      PhaseHooks.subscriptionEvent(recorder.handler) ++
+      PhaseHooks.subscriptionTerminated(recorder.handler) ++
+      PhaseHooks.subscriptionAdmission(recorder.handler) ++
+      PhaseHooks.subscriptionOverflow(recorder.handler) ++
+      PhaseHooks.request(recorder.handler) ++
+      PhaseHooks.routing(recorder.handler) ++
+      PhaseHooks.subgraphCall(recorder.handler) ++
+      PhaseHooks.attempt(recorder.handler) ++
+      PhaseHooks.retry(recorder.handler) ++
+      PhaseHooks.completion(recorder.handler) ++
+      PhaseHooks.cacheAccess(recorder.handler) ++
+      PhaseHooks.admission(recorder.handler)
 
   /**
    * Records every lifecycle event the gateway reaches, in order.

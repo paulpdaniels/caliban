@@ -89,11 +89,11 @@ final case class PhaseHooks[-R] private (
  * outgoing sides run in the order they were combined. A [[PhaseHandler.scoped]] handler is the exception: it nests the
  * handlers combined after it, so its outgoing side runs after theirs.
  *
- * Every phase except [[OverrideLabels]] takes handlers that cannot fail, so a handler can never fail the request it
+ * Every phase except [[overrideLabels]] takes handlers that cannot fail, so a handler can never fail the request it
  * observes. Handlers run on the request path, inside whatever timeout the phase they wrap is subject to.
  *
  * A handler's outgoing side receives the value the phase produces: the phase's own [[GatewayWrapper.Result]] for most
- * phases, an [[OperationEvent]] for [[ObserveOperation]]. Phases that only transform their event produce nothing
+ * phases, an [[OperationEvent]] for [[observeOperation]]. Phases that only transform their event produce nothing
  * useful for an outgoing side, and are noted as such below.
  */
 object PhaseHooks {
@@ -107,7 +107,7 @@ object PhaseHooks {
    * [[GatewaySubscriptionConfig]]`.setupTimeout`. The outgoing [[GatewayWrapper.Result]] says whether the source
    * opened.
    */
-  def SubscriptionSetup[R](handler: PhaseHandler[R, Event.SubscriptionSetup.type, Nothing, Result]): PhaseHooks[R] =
+  def subscriptionSetup[R](handler: PhaseHandler[R, Event.SubscriptionSetup.type, Nothing, Result]): PhaseHooks[R] =
     new PhaseHooks[R](subscriptionSetup = handler)
 
   /**
@@ -115,7 +115,7 @@ object PhaseHooks {
    * event, and handler work counts against [[GatewaySubscriptionConfig]]`.eventTimeout`. The outgoing
    * [[GatewayWrapper.Result]] carries that event's outcome and error count.
    */
-  def SubscriptionEvent[R](handler: PhaseHandler[R, Event.SubscriptionEvent.type, Nothing, Result]): PhaseHooks[R] =
+  def subscriptionEvent[R](handler: PhaseHandler[R, Event.SubscriptionEvent.type, Nothing, Result]): PhaseHooks[R] =
     new PhaseHooks[R](subscriptionEvent = handler)
 
   /**
@@ -123,17 +123,17 @@ object PhaseHooks {
    * whatever ended it. The event carries the termination reason and the subscription's lifetime in nanoseconds. No work
    * is bracketed, so use the incoming-only constructors of [[PhaseHandler]].
    */
-  def SubscriptionTerminated[R](
+  def subscriptionTerminated[R](
     handler: PhaseHandler[R, GatewayWrapper.Event.SubscriptionTerminated, Nothing, Result]
   ): PhaseHooks[R] =
     new PhaseHooks[R](subscriptionTerminated = handler)
 
   /**
    * Notified when a subscription is admitted or turned away, before a rejection fails its caller; `accepted`
-   * distinguishes the two. Pairs with [[SubscriptionTerminated]] to track how many subscriptions are active. No work is
+   * distinguishes the two. Pairs with [[subscriptionTerminated]] to track how many subscriptions are active. No work is
    * bracketed.
    */
-  def SubscriptionAdmission[R](
+  def subscriptionAdmission[R](
     handler: PhaseHandler[R, GatewayWrapper.Event.SubscriptionAdmission, Nothing, Result]
   ): PhaseHooks[R] =
     new PhaseHooks[R](subscriptionAdmission = handler)
@@ -142,50 +142,50 @@ object PhaseHooks {
    * Notified when a subscription's buffer overflows, just before the subscription is terminated for it. No work is
    * bracketed.
    */
-  def SubscriptionOverflow[R](
+  def subscriptionOverflow[R](
     handler: PhaseHandler[R, Event.SubscriptionOverflow.type, Nothing, Result]
   ): PhaseHooks[R] =
     new PhaseHooks[R](subscriptionOverflow = handler)
 
   /**
-   * Brackets execution of one query or mutation once [[Routing]] has resolved it, and the responses produced when a
+   * Brackets execution of one query or mutation once [[routing]] has resolved it, and the responses produced when a
    * request is rejected during drain or exhausts its deadline. A subscription reaches this
-   * phase only on those failure paths; its streaming work is covered by [[SubscriptionSetup]] and
-   * [[SubscriptionEvent]]. The event carries the operation name the client supplied.
+   * phase only on those failure paths; its streaming work is covered by [[subscriptionSetup]] and
+   * [[subscriptionEvent]]. The event carries the operation name the client supplied.
    */
-  def Request[R](handler: PhaseHandler[R, Event.Request, Nothing, Result]): PhaseHooks[R] =
+  def request[R](handler: PhaseHandler[R, Event.Request, Nothing, Result]): PhaseHooks[R] =
     new PhaseHooks[R](request = handler)
 
   /**
-   * Brackets one HTTP attempt against a remote subgraph: the [[AttemptHeaders]] handler, the round trip, and decoding
+   * Brackets one HTTP attempt against a remote subgraph: the [[attemptHeaders]] handler, the round trip, and decoding
    * of the response. The event carries the subgraph, the zero-based attempt number, the request size and the resolved
    * server address; the outgoing [[GatewayWrapper.Result]] adds the status code and response size whenever the
    * transport got that far.
    */
-  def Attempt[R](handler: PhaseHandler[R, Event.Attempt, Nothing, Result]): PhaseHooks[R] =
+  def attempt[R](handler: PhaseHandler[R, Event.Attempt, Nothing, Result]): PhaseHooks[R] =
     new PhaseHooks[R](attempt = handler)
 
   /**
    * Brackets a retried attempt against a remote subgraph, attempt 1 onwards, so it fires once per retry rather than
-   * once per call. Each occurrence sits inside the same [[SubgraphCall]] and around its own [[Attempt]].
+   * once per call. Each occurrence sits inside the same [[subgraphCall]] and around its own [[attempt]].
    */
-  def Retry[R](handler: PhaseHandler[R, Event.Retry, Nothing, Result]): PhaseHooks[R] =
+  def retry[R](handler: PhaseHandler[R, Event.Retry, Nothing, Result]): PhaseHooks[R] =
     new PhaseHooks[R](retry = handler)
 
   /**
    * Brackets assembling the response returned to the client: merging subgraph and introspection data, completing a
    * passthrough response, or producing the canned response for a preparation failure, timeout or shutdown. It covers
-   * that assembly rather than the request as a whole. Use [[ObserveOperation]] for one observation per request.
+   * that assembly rather than the request as a whole. Use [[observeOperation]] for one observation per request.
    */
-  def Completion[R](handler: PhaseHandler[R, Event.Completion.type, Nothing, Result]): PhaseHooks[R] =
+  def completion[R](handler: PhaseHandler[R, Event.Completion.type, Nothing, Result]): PhaseHooks[R] =
     new PhaseHooks[R](completion = handler)
 
   /**
-   * Brackets one lookup in the prepared-operation cache during [[Routing]]. The event's result says whether it was a
+   * Brackets one lookup in the prepared-operation cache during [[routing]]. The event's result says whether it was a
    * hit, a miss whose preparation this request runs, or a wait on preparation already in flight for another request, so
    * only the last two bracket significant work.
    */
-  def CacheAccess[R](handler: PhaseHandler[R, Event.CacheAccess, Nothing, Result]): PhaseHooks[R] =
+  def cacheAccess[R](handler: PhaseHandler[R, Event.CacheAccess, Nothing, Result]): PhaseHooks[R] =
     new PhaseHooks[R](cacheAccess = handler)
 
   /**
@@ -193,24 +193,24 @@ object PhaseHooks {
    * events, told apart by the event's kind. The permit is already held when the handler runs, so it measures admitted
    * work and not the time spent queueing for a permit.
    */
-  def Admission[R](handler: PhaseHandler[R, Event.Admission, Nothing, Result]): PhaseHooks[R] =
+  def admission[R](handler: PhaseHandler[R, Event.Admission, Nothing, Result]): PhaseHooks[R] =
     new PhaseHooks[R](admission = handler)
 
   /**
    * Brackets preparation of an incoming request: parsing, validation, policy checks, and planning, including the
-   * [[CacheAccess]] lookup that may serve it. Preparation runs alongside [[Request]] rather than inside it, so this
+   * [[cacheAccess]] lookup that may serve it. Preparation runs alongside [[request]] rather than inside it, so this
    * phase is a sibling of that one. The outgoing [[GatewayWrapper.Result]] says whether preparation succeeded.
    */
-  def Routing[R](handler: PhaseHandler[R, Event.Routing.type, Nothing, Result]): PhaseHooks[R] =
+  def routing[R](handler: PhaseHandler[R, Event.Routing.type, Nothing, Result]): PhaseHooks[R] =
     new PhaseHooks[R](routing = handler)
 
   /**
    * Brackets one logical call to a subgraph, remote or local, enclosing deduplication, admission, and every
-   * [[Attempt]] and [[Retry]] the call makes. It fires per logical call even when deduplication serves the response
+   * [[attempt]] and [[retry]] the call makes. It fires per logical call even when deduplication serves the response
    * from a call another request is already making, so it does not count transport round trips. Opening a subscription
    * does not go through it. The event carries the subgraph name and the operation type.
    */
-  def SubgraphCall[R](handler: PhaseHandler[R, Event.SubgraphCall, Nothing, Result]): PhaseHooks[R] =
+  def subgraphCall[R](handler: PhaseHandler[R, Event.SubgraphCall, Nothing, Result]): PhaseHooks[R] =
     new PhaseHooks[R](subgraphCall = handler)
 
   /**
@@ -219,16 +219,16 @@ object PhaseHooks {
    * and the headers of the event the handler returns are the ones used. This phase only transforms its event, so an
    * outgoing side receives nothing useful.
    */
-  def OutboundHeaders[R](handler: PhaseHandler[R, Event.OutboundHeaders, Nothing, Any]): PhaseHooks[R] =
+  def outboundHeaders[R](handler: PhaseHandler[R, Event.OutboundHeaders, Nothing, Any]): PhaseHooks[R] =
     new PhaseHooks[R](outboundHeaders = handler)
 
   /**
-   * Adjusts the headers of a single attempt, once [[OutboundHeaders]] has settled the call's headers, for values that
+   * Adjusts the headers of a single attempt, once [[outboundHeaders]] has settled the call's headers, for values that
    * differ between attempts such as trace context. Runs per attempt, and once with attempt `0` when opening a
-   * subscription. As with [[OutboundHeaders]], the returned event's headers are the ones used and an outgoing side
+   * subscription. As with [[outboundHeaders]], the returned event's headers are the ones used and an outgoing side
    * receives nothing useful.
    */
-  def AttemptHeaders[R](handler: PhaseHandler[R, Event.AttemptHeaders, Nothing, Any]): PhaseHooks[R] =
+  def attemptHeaders[R](handler: PhaseHandler[R, Event.AttemptHeaders, Nothing, Any]): PhaseHooks[R] =
     new PhaseHooks[R](attemptHeaders = handler)
 
   /**
@@ -236,7 +236,7 @@ object PhaseHooks {
    * the outcome, including preparation failures, timeouts, shutdown, and interruption. See [[OperationEvent]] for what
    * each of those carries. A handler that wants timings brackets them itself.
    */
-  def ObserveOperation[R](
+  def observeOperation[R](
     handler: PhaseHandler[R, Event.ObserveOperation, Nothing, OperationEvent]
   ): PhaseHooks[R] =
     new PhaseHooks[R](observeOperation = handler)
@@ -245,10 +245,10 @@ object PhaseHooks {
    * Selects the custom progressive `@override` labels that are active for a request. The gateway resolves built-in
    * `percent(x)` labels itself and ignores unknown labels in the returned set.
    *
-   * Runs during [[Routing]], and is the one phase whose handler may fail: a failure fails the request with a resolution
+   * Runs during [[routing]], and is the one phase whose handler may fail: a failure fails the request with a resolution
    * error. Like the header phases, it only transforms its event, so an outgoing side receives nothing useful. The
    * labels the returned event has activated are the ones applied.
    */
-  def OverrideLabels[R](handler: PhaseHandler[R, Event.OverrideLabels, Throwable, Any]): PhaseHooks[R] =
+  def overrideLabels[R](handler: PhaseHandler[R, Event.OverrideLabels, Throwable, Any]): PhaseHooks[R] =
     new PhaseHooks[R](overrideLabels = handler)
 }

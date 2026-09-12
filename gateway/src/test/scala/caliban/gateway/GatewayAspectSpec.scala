@@ -336,14 +336,14 @@ object GatewayAspectSpec extends ZIOSpecDefault {
    * Tags every outbound subgraph call with the subgraph it is addressed to.
    */
   private val taggingOutboundHeaders: PhaseHooks[Any] =
-    PhaseHooks.OutboundHeaders(
+    PhaseHooks.outboundHeaders(
       PhaseHandler.incoming(ev =>
         ZIO.succeed(ev.copy(headers = Header("x-gateway-wrapper", ev.subgraph) :: ev.headers))
       )
     )
 
   private def delaying(entered: Promise[Nothing, Unit]): PhaseHooks[Any] =
-    PhaseHooks.Request(
+    PhaseHooks.request(
       PhaseHandler.incomingDiscard(_ => entered.succeed(()).unit *> ZIO.sleep(Duration.fromSeconds(2)))
     )
 
@@ -352,7 +352,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
    * so a test can tell "the handler ran and produced no observation" apart from "the handler never ran".
    */
   private def observing(into: Ref[Vector[OperationEvent]], order: Ref[Vector[String]]): PhaseHooks[Any] =
-    PhaseHooks.ObserveOperation(
+    PhaseHooks.observeOperation(
       PhaseHandler[Any, Event.ObserveOperation, Nothing, Unit, OperationEvent](ev =>
         order.update(_ :+ "direct-in").as((ev, ()))
       )((_, _, event) => into.update(_ :+ event) *> order.update(_ :+ "direct-out"))
@@ -362,7 +362,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
    * The same recorder behind a [[Scope]], to pin the invariant that the scope outlives the handler's own outgoing side.
    */
   private def observingScoped(into: Ref[Vector[OperationEvent]], order: Ref[Vector[String]]): PhaseHooks[Any] =
-    PhaseHooks.ObserveOperation(
+    PhaseHooks.observeOperation(
       PhaseHandler.scoped[Any, Event.ObserveOperation, Nothing, OperationEvent](
         PhaseHandler[Scope, Event.ObserveOperation, Nothing, Unit, OperationEvent](ev =>
           order.update(_ :+ "scoped-in") *>

@@ -41,23 +41,23 @@ object GatewayMetrics {
     Metric.histogram("caliban_gateway_subscription_event_duration_seconds", durationBuckets)
 
   private[gateway] def hooks =
-    PhaseHooks.SubscriptionAdmission(
+    PhaseHooks.subscriptionAdmission(
       PhaseHandler.incomingDiscard { ev =>
         subscriptionAdmission.tagged("result", if (ev.accepted) "accepted" else "rejected").increment *>
           subscriptionsActive.increment.whenDiscard(ev.accepted)
       }
     ) ++
       PhaseHooks
-        .SubscriptionTerminated(PhaseHandler.incomingDiscard { case Event.SubscriptionTerminated(reason, duration) =>
+        .subscriptionTerminated(PhaseHandler.incomingDiscard { case Event.SubscriptionTerminated(reason, duration) =>
           subscriptionsActive.decrement *> subscriptionTerminated
             .tagged("reason", reason)
             .increment *>
             subscriptionLifetime.update(seconds(duration))
         }) ++
-      PhaseHooks.SubscriptionOverflow(PhaseHandler.incomingDiscard(_ => subscriptionOverflow.increment)) ++
-      PhaseHooks.SubscriptionSetup(trackPhaseDuration(subscriptionSetup)) ++
+      PhaseHooks.subscriptionOverflow(PhaseHandler.incomingDiscard(_ => subscriptionOverflow.increment)) ++
+      PhaseHooks.subscriptionSetup(trackPhaseDuration(subscriptionSetup)) ++
       PhaseHooks
-        .Request(
+        .request(
           trackPhase(
             requestsActive,
             requestDuration,
@@ -67,9 +67,9 @@ object GatewayMetrics {
             requestTotalLabels
           )
         ) ++
-      PhaseHooks.SubscriptionEvent(trackPhaseDuration(subscriptionEventDuration)) ++
-      PhaseHooks.Routing(trackPhaseDuration(routingDuration)) ++
-      PhaseHooks.SubgraphCall(
+      PhaseHooks.subscriptionEvent(trackPhaseDuration(subscriptionEventDuration)) ++
+      PhaseHooks.routing(trackPhaseDuration(routingDuration)) ++
+      PhaseHooks.subgraphCall(
         trackPhase(
           subgraphCallsActive,
           subgraphCallDuration,
@@ -79,11 +79,11 @@ object GatewayMetrics {
           noLabels
         )
       ) ++
-      PhaseHooks.Retry(PhaseHandler.incomingDiscard(ev => retries.tagged("subgraph", ev.subgraph).update(1L))) ++
-      PhaseHooks.CacheAccess(
+      PhaseHooks.retry(PhaseHandler.incomingDiscard(ev => retries.tagged("subgraph", ev.subgraph).update(1L))) ++
+      PhaseHooks.cacheAccess(
         PhaseHandler.incomingDiscard(ev => cache.tagged("result", ev.result.label).update(1L))
       ) ++
-      PhaseHooks.Admission(PhaseHandler.incomingDiscard(ev => admission.tagged("kind", ev.kind.label).increment))
+      PhaseHooks.admission(PhaseHandler.incomingDiscard(ev => admission.tagged("kind", ev.kind.label).increment))
 
   val aspect: GatewayAspect[Any] = new GatewayAspect[Any] {
     private[gateway] def apply[R1](gateway: Gateway[R1]): Gateway[R1] =

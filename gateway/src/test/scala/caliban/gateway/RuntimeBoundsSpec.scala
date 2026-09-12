@@ -102,7 +102,7 @@ object RuntimeBoundsSpec extends ZIOSpecDefault {
       test("cleans up an in-flight entry when the miss wrapper interrupts") {
         for {
           interrupt <- Ref.make(true)
-          hooks      = PhaseHooks.CacheAccess(PhaseHandler.incomingDiscard {
+          hooks      = PhaseHooks.cacheAccess(PhaseHandler.incomingDiscard {
                          case GatewayWrapper.Event.CacheAccess(GatewayWrapper.CacheResult.Miss) =>
                            interrupt.getAndSet(false).flatMap(if (_) ZIO.interrupt else ZIO.unit)
                          case _                                                                 => ZIO.unit
@@ -120,7 +120,7 @@ object RuntimeBoundsSpec extends ZIOSpecDefault {
           firstMiss <- Ref.make(true)
           entered   <- Promise.make[Nothing, Unit]
           joined    <- Promise.make[Nothing, Unit]
-          hooks      = PhaseHooks.CacheAccess(PhaseHandler.incomingDiscard {
+          hooks      = PhaseHooks.cacheAccess(PhaseHandler.incomingDiscard {
                          case GatewayWrapper.Event.CacheAccess(GatewayWrapper.CacheResult.Miss) =>
                            firstMiss.getAndSet(false).flatMap {
                              case true  => entered.succeed(()).unit *> ZIO.never

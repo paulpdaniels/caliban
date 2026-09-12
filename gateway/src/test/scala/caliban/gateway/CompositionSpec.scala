@@ -193,7 +193,7 @@ object CompositionSpec extends ZIOSpecDefault {
                                  """{"data":{"value":"replacement","other":"replacement"}}"""
                                else """{"data":{"other":"replacement"}}"""
                              )
-          resolver         = PhaseHooks.OverrideLabels(PhaseHandler.incoming { ev =>
+          resolver         = PhaseHooks.overrideLabels(PhaseHandler.incoming { ev =>
                                seen.update(_ :+ ev.reached) *>
                                  enabled.get.map(value => ev.activate(if (value) ev.reached + "unknown" else Set.empty[String]))
                              })
@@ -263,7 +263,7 @@ object CompositionSpec extends ZIOSpecDefault {
                 Subgraph.federation("replacement", replacement.endpoint, replacingSchema)
               )
               .withPhaseHooks(
-                PhaseHooks.OverrideLabels(
+                PhaseHooks.overrideLabels(
                   PhaseHandler.incoming(_ => ZIO.fail(new RuntimeException(secret)))
                 )
               )

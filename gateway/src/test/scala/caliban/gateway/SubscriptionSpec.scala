@@ -317,7 +317,7 @@ object SubscriptionSpec extends ZIOSpecDefault {
         gateway      <- Gateway
                           .compose(Subgraph.graphql("remote", endpoint, schema, config))
                           .withPhaseHooks(
-                            hooks ++ PhaseHooks.SubscriptionSetup(PhaseHandler.outgoing((_, _) => release.await))
+                            hooks ++ PhaseHooks.subscriptionSetup(PhaseHandler.outgoing((_, _) => release.await))
                           )
                           .interpreter
         running      <- gateway.executeStream(request).runDrain.exit.forkScoped
@@ -606,7 +606,7 @@ object SubscriptionSpec extends ZIOSpecDefault {
         processing   <- Promise.make[Nothing, Unit]
         recorded     <- recordEvents
         (seen, hooks) = recorded
-        stalled       = PhaseHooks.SubscriptionEvent(
+        stalled       = PhaseHooks.subscriptionEvent(
                           PhaseHandler.incomingDiscard(_ => processing.succeed(()).unit *> ZIO.never)
                         )
         gateway      <- Gateway

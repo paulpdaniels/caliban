@@ -32,7 +32,7 @@ object GatewayTracing {
    * outbound headers.
    */
   val hooks: PhaseHooks[Tracing] =
-    PhaseHooks.ObserveOperation(
+    PhaseHooks.observeOperation(
       spanningWith[Event.ObserveOperation, OperationEvent](
         contextual = true,
         "caliban.gateway.request",
@@ -44,13 +44,13 @@ object GatewayTracing {
         event => Result(event.outcome, event.operationType, event.errors.size)
       )
     ) ++
-      PhaseHooks.SubscriptionSetup(spanning(contextual = true, "caliban.gateway.subscription.setup")) ++
+      PhaseHooks.subscriptionSetup(spanning(contextual = true, "caliban.gateway.subscription.setup")) ++
       // Reuse incoming or ambient context, not the finished setup span; without either, each event starts a trace.
-      PhaseHooks.SubscriptionEvent(
+      PhaseHooks.subscriptionEvent(
         spanning(contextual = true, "caliban.gateway.subscription.event", SpanKind.INTERNAL)
       ) ++
-      PhaseHooks.Routing(spanning(contextual = false, "caliban.gateway.routing", SpanKind.INTERNAL)) ++
-      PhaseHooks.SubgraphCall(
+      PhaseHooks.routing(spanning(contextual = false, "caliban.gateway.routing", SpanKind.INTERNAL)) ++
+      PhaseHooks.subgraphCall(
         spanning[Event.SubgraphCall](
           contextual = false,
           "caliban.gateway.subgraph",
@@ -63,7 +63,7 @@ object GatewayTracing {
               .build()
         )
       ) ++
-      PhaseHooks.Attempt(
+      PhaseHooks.attempt(
         spanning[Event.Attempt](
           contextual = false,
           "caliban.gateway.subgraph.attempt",
@@ -81,7 +81,7 @@ object GatewayTracing {
           }
         )
       ) ++
-      PhaseHooks.Retry(
+      PhaseHooks.retry(
         spanning[Event.Retry](
           contextual = false,
           "caliban.gateway.retry",
@@ -94,8 +94,8 @@ object GatewayTracing {
               .build()
         )
       ) ++
-      PhaseHooks.Completion(spanning(contextual = false, "caliban.gateway.completion", SpanKind.INTERNAL)) ++
-      PhaseHooks.AttemptHeaders(
+      PhaseHooks.completion(spanning(contextual = false, "caliban.gateway.completion", SpanKind.INTERNAL)) ++
+      PhaseHooks.attemptHeaders(
         PhaseHandler.incoming(ev => propagatedHeaders(ev.headers).map(headers => ev.copy(headers = headers)))
       )
 
