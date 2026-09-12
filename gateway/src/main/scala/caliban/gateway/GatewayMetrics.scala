@@ -1,15 +1,15 @@
 package caliban.gateway
 
-import caliban.gateway.GatewayWrapper.{ Event, Result }
-import caliban.gateway.GatewayWrapper.Outcome.Success
+import caliban.gateway.PhaseHooks.Outcome.Success
+import caliban.gateway.PhaseHooks.{ Event, Result }
 import zio.metrics.MetricKeyType.Histogram
 import zio.metrics.{ Metric, MetricLabel }
-import zio.{ Chunk, Clock, Exit, Trace, ZIO }
+import zio.{ Chunk, Clock, Trace, ZIO }
 
 /**
  * Built-in bounded-cardinality gateway metrics.
  *
- * Attach [[aspect]] with `Gateway.compose(... ) @@ GatewayMetrics.aspect`. Metrics are opt-in so gateways that do not
+ * Attach [[hooks]] with `Gateway.compose(... ) @@ GatewayMetrics.hooks`. Metrics are opt-in so gateways that do not
  * collect them do not pay for clocks, labels, or metric-registry updates on their request path.
  */
 object GatewayMetrics {
@@ -40,7 +40,21 @@ object GatewayMetrics {
   private val subscriptionEventDuration =
     Metric.histogram("caliban_gateway_subscription_event_duration_seconds", durationBuckets)
 
-  private[gateway] def hooks =
+  private val requestDetailLabels: Result => Set[MetricLabel] = result =>
+    Set(
+      MetricLabel("outcome", result.outcome.label),
+      MetricLabel("operation_type", result.operationType.fold("unknown")(PhaseHooks.operationTypeLabel))
+    )
+
+  private val requestTotalLabels: Result => Set[MetricLabel] = result =>
+    Set(MetricLabel("outcome", if (result.outcome == Success) "success" else "error"))
+
+  private val subgraphDetailLabels: Result => Set[MetricLabel] = result =>
+    Set(MetricLabel("outcome", result.outcome.label))
+
+  private val noLabels: Result => Set[MetricLabel] = _ => Set.empty
+
+  val hooks: PhaseHooks[Any] =
     PhaseHooks.subscriptionAdmission(
       PhaseHandler.incomingDiscard { ev =>
         subscriptionAdmission.tagged("result", if (ev.accepted) "accepted" else "rejected").increment *>
@@ -84,11 +98,6 @@ object GatewayMetrics {
         PhaseHandler.incomingDiscard(ev => cache.tagged("result", ev.result.label).update(1L))
       ) ++
       PhaseHooks.admission(PhaseHandler.incomingDiscard(ev => admission.tagged("kind", ev.kind.label).increment))
-
-  val aspect: GatewayAspect[Any] = new GatewayAspect[Any] {
-    private[gateway] def apply[R1](gateway: Gateway[R1]): Gateway[R1] =
-      gateway.withPhaseHooks(hooks)
-  }
 
   private def trackPhase[Event](
     active: Metric.Gauge[Double],
@@ -145,20 +154,6 @@ object GatewayMetrics {
         .tagged("outcome", result.outcome.label)
         .update(seconds(finishedAt - startedAt))
     }
-
-  private val requestDetailLabels: Result => Set[MetricLabel] = result =>
-    Set(
-      MetricLabel("outcome", result.outcome.label),
-      MetricLabel("operation_type", result.operationType.fold("unknown")(GatewayWrapper.operationTypeLabel))
-    )
-
-  private val requestTotalLabels: Result => Set[MetricLabel] = result =>
-    Set(MetricLabel("outcome", if (result.outcome == Success) "success" else "error"))
-
-  private val subgraphDetailLabels: Result => Set[MetricLabel] = result =>
-    Set(MetricLabel("outcome", result.outcome.label))
-
-  private val noLabels: Result => Set[MetricLabel] = _ => Set.empty
 
   private def seconds(nanos: Long): Double = nanos.toDouble / 1000000000d
 }

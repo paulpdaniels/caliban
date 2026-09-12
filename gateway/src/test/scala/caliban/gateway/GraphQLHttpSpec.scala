@@ -551,7 +551,7 @@ object GraphQLHttpSpec extends ZIOSpecDefault {
         backend        <- HttpClientZioBackend.scoped()
         calls          <- Ref.make(0)
         remote         <- endpoint(_ => calls.update(_ + 1).as(Response.json("""{"data":{"value":"ok"}}""")))
-        gate           <- AdmissionGate.make(1, GatewayWrapper.AdmissionKind.Subgraph, PhaseHooks.empty)
+        gate           <- AdmissionGate.make(1, PhaseHooks.AdmissionKind.Subgraph, PhaseHooks.empty)
         blockerStarted <- Promise.make[Nothing, Unit]
         releaseBlocker <- Promise.make[Nothing, Unit]
         blocker        <- gate(blockerStarted.succeed(()).unit *> releaseBlocker.await).fork
@@ -850,8 +850,8 @@ object GraphQLHttpSpec extends ZIOSpecDefault {
         mutationResult == Left(HttpFailure(503)),
         mutationAttempts == 1,
         rejectedResult == Left(HttpFailure(400)),
-        rejectedResult.left.exists(failureOutcome(_) == GatewayWrapper.Outcome.RequestError),
-        mutationResult.left.exists(failureOutcome(_) == GatewayWrapper.Outcome.TransportError),
+        rejectedResult.left.exists(failureOutcome(_) == PhaseHooks.Outcome.RequestError),
+        mutationResult.left.exists(failureOutcome(_) == PhaseHooks.Outcome.TransportError),
         rejectedAttempts == 1,
         envelopeResult.exists(_.errors.map(_.msg) == List("try later")),
         envelopeAttempts == 1

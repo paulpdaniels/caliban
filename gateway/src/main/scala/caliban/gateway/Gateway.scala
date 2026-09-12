@@ -32,7 +32,7 @@ final class Gateway[-R] private[gateway] (
   private val resolver: Option[OperationResolver[R]],
   private val policy: Option[OperationPolicy[R]],
   private val config: GatewayConfig,
-  private val phases: PhaseHooks[R]
+  private val hooks: PhaseHooks[R]
 ) {
 
   /**
@@ -136,7 +136,7 @@ final class Gateway[-R] private[gateway] (
                         subgraph,
                         backend,
                         config.remoteErrorMessages,
-                        phases
+                        hooks
                       )
                     )
       graph      <- ZIO
@@ -148,14 +148,14 @@ final class Gateway[-R] private[gateway] (
       control    <- GatewayExecutionControl.make(
                       config.maxConcurrentRequests,
                       config.subscriptions,
-                      phases,
+                      hooks,
                       config.requestTimeout,
                       config.drainTimeout
                     )
       executors   = successes.map { value =>
                       val name                          = value.subgraph.name
                       val executor: SubgraphExecutor[R] =
-                        if (phases.enabled) new ObservedSubgraphExecutor(name, value.executor, phases)
+                        if (hooks.enabled) new ObservedSubgraphExecutor(name, value.executor, hooks)
                         else value.executor
                       name -> executor
                     }.toMap
@@ -171,16 +171,16 @@ final class Gateway[-R] private[gateway] (
                           config.planningTimeout
                         )
                       ),
-                      new OperationHooks(graph.securityRequirements, resolver, policy, phases),
+                      new OperationHooks(graph.securityRequirements, resolver, policy, hooks),
                       config,
-                      phases,
+                      hooks,
                       graph.estimatedOperationCost
                     )
     } yield new GatewayInterpreterImpl[R](
       operations,
-      new PlanExecutor(graph, executors, phases),
+      new PlanExecutor(graph, executors, hooks),
       control,
-      phases
+      hooks
     )
 
   private def buildInChildScope[A](effect: => ZIO[Scope, GatewayBuildError, A])(implicit
@@ -200,7 +200,7 @@ final class Gateway[-R] private[gateway] (
   ): IO[GatewayBuildError, Gateway.Snapshot[R1]] =
     decomposeSupergraph(supergraph, loader).map { case (subgraphs, fingerprint) =>
       Gateway.Snapshot(
-        new Gateway(Origin.Composed(subgraphs), resolver, policy, config, phases),
+        new Gateway(Origin.Composed(subgraphs), resolver, policy, config, hooks),
         fingerprint
       )
     }
@@ -234,7 +234,7 @@ final class Gateway[-R] private[gateway] (
                   }
                 }
     } yield Gateway.Snapshot(
-      new Gateway(Origin.Composed(loaded.map(_._1)), resolver, policy, config, phases),
+      new Gateway(Origin.Composed(loaded.map(_._1)), resolver, policy, config, hooks),
       loaded.flatMap(_._2)
     )
 
@@ -252,32 +252,32 @@ final class Gateway[-R] private[gateway] (
    * Transforms the finite operation and admission limits used by each built interpreter.
    */
   def withConfig(configure: GatewayConfig => GatewayConfig): Gateway[R] =
-    new Gateway(origin, resolver, policy, configure(config), phases)
+    new Gateway(origin, resolver, policy, configure(config), hooks)
 
   /**
    * Resolves canonical GraphQL text before parsing and validation.
    */
   def withOperationResolver[R1 <: R](value: OperationResolver[R1]): Gateway[R1] =
-    new Gateway(origin, Some(value), policy, config, phases)
+    new Gateway(origin, Some(value), policy, config, hooks)
 
   /**
    * Allows or rejects operations after validation and variable coercion.
    */
   def withOperationPolicy[R1 <: R](value: OperationPolicy[R1]): Gateway[R1] =
-    new Gateway(origin, resolver, Some(value), config, phases)
+    new Gateway(origin, resolver, Some(value), config, hooks)
 
   /**
    * Adds phase hooks to the gateway lifecycle. Hooks accumulate: each call appends to the hooks already attached,
    * so several independent integrations can be layered onto the same description.
    */
-  def withPhaseHooks[R1 <: R](phases: PhaseHooks[R1]): Gateway[R1] =
-    new Gateway(origin, resolver, policy, config, this.phases ++ phases)
+  def withPhaseHooks[R1 <: R](hooks: PhaseHooks[R1]): Gateway[R1] =
+    new Gateway(origin, resolver, policy, config, this.hooks ++ hooks)
 
   /**
    * Adds an integration around the gateway lifecycle.
    */
-  def @@[R1 <: R](aspect: GatewayAspect[R1]): Gateway[R1] =
-    aspect(this)
+  def @@[R1 <: R](hooks: PhaseHooks[R1]): Gateway[R1] =
+    withPhaseHooks(hooks)
 
 }
 

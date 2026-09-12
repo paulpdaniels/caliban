@@ -2,7 +2,7 @@ package caliban.gateway.internal
 
 import caliban._
 import caliban.gateway._
-import caliban.gateway.GatewayWrapper.{ AdmissionKind, Event, Result }
+import caliban.gateway.PhaseHooks.{ AdmissionKind, Event, Result }
 import zio._
 import zio.stream.ZStream
 
@@ -91,8 +91,8 @@ private[gateway] final class SubscriptionControl[-R] private (
                                    Event.SubscriptionSetup
                                  )(sourceScope.extend[R1](open))(
                                    Result.fromExit(_)(
-                                     _ => Result(GatewayWrapper.Outcome.Success),
-                                     _ => Result(GatewayWrapper.Outcome.TransportError)
+                                     _ => Result(PhaseHooks.Outcome.Success),
+                                     _ => Result(PhaseHooks.Outcome.TransportError)
                                    )
                                  )
                              }
@@ -134,7 +134,7 @@ private[gateway] final class SubscriptionControl[-R] private (
                                    Event.SubscriptionEvent
                                  )(
                                    process(event)
-                                 )(Result.fromExit(_)(Result.fromResponse, _ => Result(GatewayWrapper.Outcome.InternalError)))
+                                 )(Result.fromExit(_)(Result.fromResponse, _ => Result(PhaseHooks.Outcome.InternalError)))
                                }
                                .timeoutFail(SubscriptionTermination.EventTimeout)(config.eventTimeout)
                            }

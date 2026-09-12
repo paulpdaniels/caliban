@@ -1,14 +1,14 @@
 package caliban.gateway.internal
 
-import caliban.execution.ExecutionRequest
-import caliban.gateway.OperationPolicy.{ Allow, Reject, SecurityDirective, SecurityRequirement, ValidatedOperation }
-import caliban.gateway.internal.composition.ComposedGraph.OverrideLabel
-import caliban.gateway.internal.planning.OperationPlan
-import caliban.gateway.{ GatewayWrapper, OperationPolicy, OperationResolver, PhaseHooks }
-import caliban.parsing.adt.Document
 import caliban.ResponseValue.ObjectValue
 import caliban.Value.StringValue
-import caliban.gateway.GatewayWrapper.Event
+import caliban.execution.ExecutionRequest
+import caliban.gateway.OperationPolicy._
+import caliban.gateway.PhaseHooks.Event
+import caliban.gateway.internal.composition.ComposedGraph.OverrideLabel
+import caliban.gateway.internal.planning.OperationPlan
+import caliban.gateway.{ OperationPolicy, OperationResolver, PhaseHooks }
+import caliban.parsing.adt.Document
 import caliban.{ CalibanError, GraphQLRequest }
 import zio.{ Cause, Exit, Trace, ZIO }
 

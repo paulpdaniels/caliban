@@ -143,10 +143,10 @@ object OperationResolverSpec extends ZIOSpecDefault {
             rejected.errors.flatMap(code) == List(StringValue("REVOKED")),
             count == 3,
             sent.size == 2,
-            observed.count(_ == GatewayWrapper.Event.CacheAccess(GatewayWrapper.CacheResult.Hit)) == (if (uncached) 0
-                                                                                                      else 1),
-            observed.count(_ == GatewayWrapper.Event.CacheAccess(GatewayWrapper.CacheResult.Miss)) == (if (uncached) 0
-                                                                                                       else 1)
+            observed.count(_ == PhaseHooks.Event.CacheAccess(PhaseHooks.CacheResult.Hit)) == (if (uncached) 0
+                                                                                              else 1),
+            observed.count(_ == PhaseHooks.Event.CacheAccess(PhaseHooks.CacheResult.Miss)) == (if (uncached) 0
+                                                                                               else 1)
           )
         }
         .map(_.reduce(_ && _))

@@ -1,16 +1,16 @@
 package caliban.gateway.internal.execution
 
-import caliban.{ CalibanError, GraphQLInterpreter, GraphQLRequest, GraphQLResponse, GraphQLResponseContext, PathValue }
+import caliban.ResponseValue.{ ObjectValue, StreamValue }
 import caliban.execution.Field
-import caliban.gateway.{ GatewayWrapper, PhaseHooks }
-import caliban.gateway.GatewayWrapper.{ Event, Outcome, Result }
+import caliban.gateway.PhaseHooks
+import caliban.gateway.PhaseHooks.{ Event, Outcome, Result }
 import caliban.gateway.internal.SubscriptionTermination
 import caliban.gateway.internal.execution.SubgraphExecutor.ErrorPolicy
 import caliban.parsing.adt.OperationType
-import caliban.ResponseValue.{ ObjectValue, StreamValue }
 import caliban.schema.Types
-import zio.{ Exit, Scope, Trace, ZIO }
+import caliban._
 import zio.stream.ZStream
+import zio.{ Exit, Scope, Trace, ZIO }
 
 import scala.util.control.NoStackTrace
 

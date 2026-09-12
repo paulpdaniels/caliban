@@ -1,17 +1,17 @@
 package caliban.gateway.internal
 
-import caliban.{ CalibanError, GraphQLRequest, GraphQLResponse, GraphQLResponseContext, IncomingRequestHeaders }
-import caliban.execution.{ ExecutionRequest, Executor }
-import caliban.gateway.{ GatewayInterpreter, GatewayWrapper, OperationEvent, PhaseHooks }
-import caliban.gateway.GatewayWrapper.{ Event, Outcome, Result }
-import caliban.gateway.internal.execution.PlanExecutor
-import caliban.gateway.internal.GatewayInterpreterImpl._
 import caliban.GraphQLResponseContext.ServerFailure
-import caliban.parsing.adt.{ Document, OperationType }
 import caliban.ResponseValue.StreamValue
 import caliban.Value.NullValue
-import zio.{ Exit, IO, Trace, UIO, URIO, ZIO }
+import caliban.execution.{ ExecutionRequest, Executor }
+import caliban.gateway.PhaseHooks.{ Event, Outcome, Result }
+import caliban.gateway.internal.GatewayInterpreterImpl._
+import caliban.gateway.internal.execution.PlanExecutor
+import caliban.gateway.{ GatewayInterpreter, OperationEvent, PhaseHooks }
+import caliban.parsing.adt.{ Document, OperationType }
+import caliban._
 import zio.stream.ZStream
+import zio.{ Exit, IO, Trace, UIO, URIO, ZIO }
 
 private[gateway] final class GatewayInterpreterImpl[-R](
   operations: OperationPreparation[R],

@@ -296,10 +296,10 @@ private[gateway] object GatewayTestSupport {
   }
 
   /**
-   * Attaches the same handler to every phase that reports a [[GatewayWrapper.Result]].
+   * Attaches the same handler to every phase that reports a [[PhaseHooks.Result]].
    */
   private trait PhaseRecorder {
-    def handler[Ev <: GatewayWrapper.Event]: PhaseHandler[Any, Ev, Nothing, GatewayWrapper.Result]
+    def handler[Ev <: PhaseHooks.Event]: PhaseHandler[Any, Ev, Nothing, PhaseHooks.Result]
   }
 
   private def everyResultPhase(recorder: PhaseRecorder): PhaseHooks[Any] =
@@ -323,10 +323,10 @@ private[gateway] object GatewayTestSupport {
    * The hooks are an ordinary [[PhaseHooks]] value, so a spec that needs targeted behaviour composes it rather than
    * rebuilding the recorder: `gateway.withPhaseHooks(hooks ++ PhaseHooks.SubscriptionSetup(handler))`.
    */
-  def recordEvents: UIO[(Ref[Vector[GatewayWrapper.Event]], PhaseHooks[Any])] =
-    Ref.make(Vector.empty[GatewayWrapper.Event]).map { events =>
+  def recordEvents: UIO[(Ref[Vector[PhaseHooks.Event]], PhaseHooks[Any])] =
+    Ref.make(Vector.empty[PhaseHooks.Event]).map { events =>
       val hooks = everyResultPhase(new PhaseRecorder {
-        def handler[Ev <: GatewayWrapper.Event]: PhaseHandler[Any, Ev, Nothing, GatewayWrapper.Result] =
+        def handler[Ev <: PhaseHooks.Event]: PhaseHandler[Any, Ev, Nothing, PhaseHooks.Result] =
           PhaseHandler.incomingDiscard((ev: Ev) => events.update(_ :+ ev))
       })
 
@@ -334,22 +334,22 @@ private[gateway] object GatewayTestSupport {
     }
 
   /**
-   * Records every lifecycle event on entry, and on exit the [[GatewayWrapper.Result]] each one completed with,
+   * Records every lifecycle event on entry, and on exit the [[PhaseHooks.Result]] each one completed with,
    * paired with the event it belongs to.
    */
   def recordEventsAndResults: UIO[
     (
-      Ref[Vector[GatewayWrapper.Event]],
-      Ref[Vector[(GatewayWrapper.Event, GatewayWrapper.Result)]],
+      Ref[Vector[PhaseHooks.Event]],
+      Ref[Vector[(PhaseHooks.Event, PhaseHooks.Result)]],
       PhaseHooks[Any]
     )
   ] =
     for {
-      events  <- Ref.make(Vector.empty[GatewayWrapper.Event])
-      results <- Ref.make(Vector.empty[(GatewayWrapper.Event, GatewayWrapper.Result)])
+      events  <- Ref.make(Vector.empty[PhaseHooks.Event])
+      results <- Ref.make(Vector.empty[(PhaseHooks.Event, PhaseHooks.Result)])
     } yield {
       val hooks = everyResultPhase(new PhaseRecorder {
-        def handler[Ev <: GatewayWrapper.Event]: PhaseHandler[Any, Ev, Nothing, GatewayWrapper.Result] =
+        def handler[Ev <: PhaseHooks.Event]: PhaseHandler[Any, Ev, Nothing, PhaseHooks.Result] =
           PhaseHandler((ev: Ev) => events.update(_ :+ ev).as((ev, ())))((ev, _, result) =>
             results.update(_ :+ (ev -> result))
           )

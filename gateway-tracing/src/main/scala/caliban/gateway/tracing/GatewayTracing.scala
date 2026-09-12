@@ -1,15 +1,15 @@
 package caliban.gateway.tracing
 
 import caliban.IncomingRequestHeaders
-import caliban.gateway.GatewayWrapper.{ Event, Outcome, Result }
-import caliban.gateway.{ Gateway, GatewayAspect, GatewayWrapper, OperationEvent, PhaseHandler, PhaseHooks }
+import caliban.gateway.PhaseHooks.{ Event, Outcome, Result }
+import caliban.gateway.{ OperationEvent, PhaseHandler, PhaseHooks }
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.{ SpanKind, StatusCode }
 import sttp.model.Header
 import zio.telemetry.opentelemetry.context.{ IncomingContextCarrier, OutgoingContextCarrier }
-import zio.telemetry.opentelemetry.tracing.{ StatusMapper, Tracing }
 import zio.telemetry.opentelemetry.tracing.propagation.TraceContextPropagator
-import zio.{ Exit, Scope, Trace, URIO, ZIO }
+import zio.telemetry.opentelemetry.tracing.{ StatusMapper, Tracing }
+import zio.{ Scope, Trace, URIO, ZIO }
 
 import java.util.Locale
 import scala.collection.mutable
@@ -17,8 +17,7 @@ import scala.collection.mutable
 /**
  * OpenTelemetry integration for a Caliban gateway.
  *
- * Attach [[aspect]] with `Gateway.compose(...) @@ GatewayTracing.aspect`, or add [[hooks]] with `withPhaseHooks`
- * where the surrounding code already assembles its own `PhaseHooks`.
+ * Attach [[hooks]] with `Gateway.compose(...) @@ GatewayTracing.hooks`
  */
 object GatewayTracing {
   private val propagation = TraceContextPropagator.default
@@ -59,7 +58,7 @@ object GatewayTracing {
             Attributes
               .builder()
               .put("graphql.subgraph.name", ev.subgraph)
-              .put("graphql.operation.type", GatewayWrapper.operationTypeLabel(ev.operationType))
+              .put("graphql.operation.type", PhaseHooks.operationTypeLabel(ev.operationType))
               .build()
         )
       ) ++
@@ -99,11 +98,7 @@ object GatewayTracing {
         PhaseHandler.incoming(ev => propagatedHeaders(ev.headers).map(headers => ev.copy(headers = headers)))
       )
 
-  val aspect: GatewayAspect[Tracing] = new GatewayAspect[Tracing] {
-    private[gateway] def apply[R1 <: Tracing](gateway: Gateway[R1]): Gateway[R1] = gateway.withPhaseHooks(hooks)
-  }
-
-  /** Opens a span around one phase whose outgoing value is already a [[GatewayWrapper.Result]]. */
+  /** Opens a span around one phase whose outgoing value is already a [[PhaseHooks.Result]]. */
   private def spanning[Ev <: Event](
     contextual: Boolean,
     name: String,
@@ -117,7 +112,7 @@ object GatewayTracing {
    *
    * The span has to enclose the phase effect, which is what a [[PhaseHandler]] with both an incoming and an outgoing
    * side is for; the cheaper incoming-only handlers cannot express it. `result` adapts phases that report something
-   * other than a [[GatewayWrapper.Result]], such as the [[OperationEvent]] of `observeOperation`.
+   * other than a [[PhaseHooks.Result]], such as the [[OperationEvent]] of `observeOperation`.
    */
   private def spanningWith[Ev <: Event, Res](
     contextual: Boolean,
@@ -145,7 +140,7 @@ object GatewayTracing {
               .put("caliban.gateway.subscription.outcome", result.outcome.label)
           case _: Event.ObserveOperation                         =>
             result.operationType.foreach(operationType =>
-              attributes.put("graphql.operation.type", GatewayWrapper.operationTypeLabel(operationType))
+              attributes.put("graphql.operation.type", PhaseHooks.operationTypeLabel(operationType))
             )
             attributes
               .put("graphql.response.error.count", result.errorCount.toLong)

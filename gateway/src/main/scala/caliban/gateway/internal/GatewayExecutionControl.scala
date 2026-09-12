@@ -1,7 +1,7 @@
 package caliban.gateway.internal
 
-import caliban.gateway.{ GatewaySubscriptionConfig, GatewayWrapper, PhaseHooks }
-import caliban.gateway.GatewayWrapper.{ AdmissionKind, Event, Result }
+import caliban.gateway.PhaseHooks.{ AdmissionKind, Event, Result }
+import caliban.gateway.{ GatewaySubscriptionConfig, PhaseHooks }
 import zio.{ Clock, Duration, Exit, Promise, Ref, Scope, Trace, UIO, URIO, ZIO }
 
 private[gateway] final class GatewayExecutionControl[-R] private (

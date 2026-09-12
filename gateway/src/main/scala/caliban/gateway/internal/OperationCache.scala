@@ -1,7 +1,7 @@
 package caliban.gateway.internal
 
 import caliban.gateway.PhaseHooks
-import caliban.gateway.GatewayWrapper.{ CacheResult, Event, Result }
+import caliban.gateway.PhaseHooks.{ CacheResult, Event, Result }
 import zio.{ Exit, FiberId, Promise, Ref, Trace, UIO, ZIO }
 
 import scala.annotation.tailrec

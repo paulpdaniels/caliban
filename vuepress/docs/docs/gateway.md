@@ -211,8 +211,8 @@ For a custom label, attach an override-label hook:
 
 ```scala
 import caliban.GraphQLRequest
-import caliban.gateway.GatewayWrapper.Event
 import caliban.gateway.{ Gateway, PhaseHandler, PhaseHooks }
+import caliban.gateway.PhaseHooks.Event
 import zio.Task
 
 def activeLabels(request: GraphQLRequest): Task[Set[String]] = ???
@@ -580,7 +580,7 @@ Metrics are opt-in:
 ```scala
 import caliban.gateway.{ Gateway, GatewayMetrics }
 
-val gateway = Gateway.compose(products, reviews) @@ GatewayMetrics.aspect
+val gateway = Gateway.compose(products, reviews) @@ GatewayMetrics.hooks
 ```
 
 The built-in metrics report requests, routing, subgraph calls, retries, admission counts, operation-cache activity, and subscriptions.
@@ -592,14 +592,14 @@ import caliban.gateway.GatewayMetrics
 import caliban.gateway.tracing.GatewayTracing
 
 val gateway = Gateway.compose(products, reviews) @@
-  (GatewayMetrics.aspect @@ GatewayTracing.aspect)
+  (GatewayMetrics.hooks ++ GatewayTracing.hooks)
 ```
 
-The tracing aspect creates spans for gateway requests and remote calls. `QuickAdapter` propagates incoming trace headers.
+The tracing hooks create spans for gateway requests and remote calls. `QuickAdapter` propagates incoming trace headers.
 The request span covers the whole request, so planning, the operation cache and remote calls are nested inside it. A
 subscription request gets one too, covering its setup; the subscription itself is reported by the subscription spans.
 
-Both aspects are bundles of `PhaseHooks`. `Gateway#withPhaseHooks` adds your own, and it accumulates rather than replaces,
+Both hooks are bundles of `PhaseHooks`. `Gateway#withPhaseHooks` adds your own, and it accumulates rather than replaces,
 so custom hooks and the built-in aspects can sit on the same gateway.
 
 ## Subscriptions

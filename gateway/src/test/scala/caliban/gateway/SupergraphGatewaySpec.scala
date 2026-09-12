@@ -200,8 +200,8 @@ object SupergraphGatewaySpec extends ZIOSpecDefault {
         failed.isEmpty,
         result.errors.isEmpty,
         fetches == 2,
-        observed.count(_ == GatewayWrapper.Event.CacheAccess(GatewayWrapper.CacheResult.Miss)) == 1,
-        observed.count(_ == GatewayWrapper.Event.CacheAccess(GatewayWrapper.CacheResult.Hit)) == 1
+        observed.count(_ == PhaseHooks.Event.CacheAccess(PhaseHooks.CacheResult.Miss)) == 1,
+        observed.count(_ == PhaseHooks.Event.CacheAccess(PhaseHooks.CacheResult.Hit)) == 1
       )
     },
     test("retains the previous generation when the republished supergraph cannot be decomposed") {
@@ -411,8 +411,8 @@ object SupergraphGatewaySpec extends ZIOSpecDefault {
         result.errors.isEmpty,
         polls == 2,
         // No swap: the second execution reuses the first generation's warm operation cache.
-        observed.count(_ == GatewayWrapper.Event.CacheAccess(GatewayWrapper.CacheResult.Miss)) == 1,
-        observed.count(_ == GatewayWrapper.Event.CacheAccess(GatewayWrapper.CacheResult.Hit)) == 1
+        observed.count(_ == PhaseHooks.Event.CacheAccess(PhaseHooks.CacheResult.Miss)) == 1,
+        observed.count(_ == PhaseHooks.Event.CacheAccess(PhaseHooks.CacheResult.Hit)) == 1
       )
     },
     test("retains the previous generation when the uplink answers a FetchError") {

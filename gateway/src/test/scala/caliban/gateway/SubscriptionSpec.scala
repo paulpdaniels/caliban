@@ -209,7 +209,7 @@ object SubscriptionSpec extends ZIOSpecDefault {
         observed     <- seen.get
       } yield assertTrue(
         exit.causeOption.flatMap(_.failureOption).contains(SubscriptionTermination.TooLarge),
-        observed.collect { case GatewayWrapper.Event.SubscriptionTerminated(reason, _) => reason } ==
+        observed.collect { case PhaseHooks.Event.SubscriptionTerminated(reason, _) => reason } ==
           Vector("SUBSCRIPTION_EVENT_TOO_LARGE")
       )
     },
@@ -266,7 +266,7 @@ object SubscriptionSpec extends ZIOSpecDefault {
             observed     <- seen.get
           } yield assertTrue(
             exit.causeOption.flatMap(_.failureOption).contains(SubscriptionTermination.TooLarge),
-            observed.collect { case GatewayWrapper.Event.SubscriptionTerminated(reason, _) => reason } ==
+            observed.collect { case PhaseHooks.Event.SubscriptionTerminated(reason, _) => reason } ==
               Vector("SUBSCRIPTION_EVENT_TOO_LARGE")
           )
         }
@@ -327,8 +327,8 @@ object SubscriptionSpec extends ZIOSpecDefault {
         observations <- seen.get
       } yield assertTrue(
         exit.causeOption.flatMap(_.failureOption).contains(SubscriptionTermination.Overflow),
-        observations.count(_ == GatewayWrapper.Event.SubscriptionOverflow) == 1,
-        observations.collect { case GatewayWrapper.Event.SubscriptionTerminated(reason, _) => reason } == Vector(
+        observations.count(_ == PhaseHooks.Event.SubscriptionOverflow) == 1,
+        observations.collect { case PhaseHooks.Event.SubscriptionTerminated(reason, _) => reason } == Vector(
           "SUBSCRIPTION_OVERFLOW"
         )
       )
@@ -406,7 +406,7 @@ object SubscriptionSpec extends ZIOSpecDefault {
       } yield assertTrue(
         response.data.isInstanceOf[ResponseValue.StreamValue],
         events.map(_.data.toString).toList == List("{\"event\":1}", "{\"event\":2}"),
-        !observed.exists(_.isInstanceOf[GatewayWrapper.Event.Request]),
+        !observed.exists(_.isInstanceOf[PhaseHooks.Event.Request]),
         count == 1
       )
     },
@@ -622,11 +622,11 @@ object SubscriptionSpec extends ZIOSpecDefault {
         events       <- seen.get
       } yield assertTrue(
         exit.causeOption.flatMap(_.failureOption).contains(SubscriptionTermination.Overflow),
-        events.contains(GatewayWrapper.Event.SubscriptionOverflow),
-        events.collect { case GatewayWrapper.Event.SubscriptionTerminated(reason, _) => reason } == Vector(
+        events.contains(PhaseHooks.Event.SubscriptionOverflow),
+        events.collect { case PhaseHooks.Event.SubscriptionTerminated(reason, _) => reason } == Vector(
           "SUBSCRIPTION_OVERFLOW"
         ),
-        !events.exists(_.isInstanceOf[GatewayWrapper.Event.Request])
+        !events.exists(_.isInstanceOf[PhaseHooks.Event.Request])
       )
     },
     test("local events are ordered, planned once, and executeRequest returns an ordinary StreamValue") {

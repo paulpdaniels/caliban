@@ -184,8 +184,8 @@ object ReloadableGatewaySpec extends ZIOSpecDefault {
         observed       <- events.get
         calls          <- remote.checks.get
       } yield assertTrue(
-        observed.count(_ == GatewayWrapper.Event.CacheAccess(GatewayWrapper.CacheResult.Miss)) == 1,
-        observed.count(_ == GatewayWrapper.Event.CacheAccess(GatewayWrapper.CacheResult.Hit)) == 1,
+        observed.count(_ == PhaseHooks.Event.CacheAccess(PhaseHooks.CacheResult.Miss)) == 1,
+        observed.count(_ == PhaseHooks.Event.CacheAccess(PhaseHooks.CacheResult.Hit)) == 1,
         calls == 2
       )
     },
@@ -256,8 +256,8 @@ object ReloadableGatewaySpec extends ZIOSpecDefault {
         _              <- runtime.execute("{ value added }")
         observed       <- events.get
       } yield assertTrue(
-        observed.count(_ == GatewayWrapper.Event.CacheAccess(GatewayWrapper.CacheResult.Miss)) == 1,
-        observed.count(_ == GatewayWrapper.Event.CacheAccess(GatewayWrapper.CacheResult.Hit)) == 1
+        observed.count(_ == PhaseHooks.Event.CacheAccess(PhaseHooks.CacheResult.Miss)) == 1,
+        observed.count(_ == PhaseHooks.Event.CacheAccess(PhaseHooks.CacheResult.Hit)) == 1
       )
     },
     test("refreshes ordinary introspection schemas") {

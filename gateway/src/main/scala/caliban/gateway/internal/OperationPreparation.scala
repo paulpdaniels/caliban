@@ -1,18 +1,18 @@
 package caliban.gateway.internal
 
-import caliban.{ CalibanError, Configurator, GraphQLRequest, InputValue, ResponseValue, Value }
+import caliban.InputValue.VariableValue
 import caliban.execution.{ ExecutionRequest, Field, RequestPreparation }
-import caliban.gateway.{ GatewayConfig, GatewayWrapper, PhaseHooks }
-import caliban.gateway.internal.execution.PreparedPlan
 import caliban.gateway.internal.OperationCache.Weighted
 import caliban.gateway.internal.OperationPreparation._
 import caliban.gateway.internal.composition.ComposedGraph.OverrideLabel
+import caliban.gateway.internal.execution.PreparedPlan
 import caliban.gateway.internal.planning.CandidateSearch.PlanningFailure
 import caliban.gateway.internal.planning.{ OperationPlan, OperationPlanner }
-import caliban.InputValue.VariableValue
+import caliban.gateway.{ GatewayConfig, PhaseHooks }
 import caliban.parsing.adt.{ Directive, Document }
 import caliban.schema.RootType
 import caliban.validation.Validator
+import caliban._
 import zio.{ Exit, IO, Random, Trace, UIO, ZIO }
 
 private[gateway] final class OperationPreparation[-R] private (

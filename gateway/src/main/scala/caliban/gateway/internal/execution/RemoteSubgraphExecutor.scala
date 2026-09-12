@@ -1,13 +1,13 @@
 package caliban.gateway.internal.execution
 
-import caliban.{ CalibanError, GraphQLRequest, GraphQLResponse, IncomingRequestHeaders, ResponseValue }
-import caliban.gateway.{ GatewayWrapper, PhaseHooks, RemoteGraphQLConfig }
-import caliban.gateway.GatewayWrapper.{ Event, Outcome, Result }
-import caliban.gateway.internal.{ AdmissionGate, SubscriptionTermination }
-import caliban.interop.jsoniter.BoundedOutputStream
-import caliban.parsing.adt.OperationType
 import caliban.ResponseValue.ObjectValue
 import caliban.Value.NullValue
+import caliban.gateway.PhaseHooks.{ Event, Outcome, Result }
+import caliban.gateway.internal.{ AdmissionGate, SubscriptionTermination }
+import caliban.gateway.{ PhaseHooks, RemoteGraphQLConfig }
+import caliban.interop.jsoniter.BoundedOutputStream
+import caliban.parsing.adt.OperationType
+import caliban._
 import com.github.plokhotnyuk.jsoniter_scala.core._
 import sttp.capabilities.zio.ZioStreams
 import sttp.client4._
@@ -419,7 +419,7 @@ private[gateway] object RemoteSubgraphExecutor {
             admission.fold(
               AdmissionGate.make(
                 config.execution.maxConcurrentCalls,
-                GatewayWrapper.AdmissionKind.Subgraph,
+                PhaseHooks.AdmissionKind.Subgraph,
                 phases
               )
             )(ZIO.succeed(_))

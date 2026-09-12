@@ -16,5 +16,5 @@ final case class OperationEvent(
   executionRequest: Option[ExecutionRequest],
   operationType: Option[OperationType],
   errors: List[CalibanError],
-  outcome: GatewayWrapper.Outcome
+  outcome: PhaseHooks.Outcome
 )

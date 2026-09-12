@@ -1,7 +1,7 @@
 package caliban.gateway.internal
 
-import caliban.gateway.{ GatewayWrapper, PhaseHooks }
-import caliban.gateway.GatewayWrapper.{ AdmissionKind, Event, Result }
+import caliban.gateway.PhaseHooks
+import caliban.gateway.PhaseHooks.{ AdmissionKind, Event, Result }
 import zio.{ Scope, Semaphore, Trace, UIO, ZIO }
 
 private[gateway] final class AdmissionGate[-R] private (

@@ -4,7 +4,7 @@ import caliban.ResponseValue.{ ListValue, ObjectValue }
 import caliban.Value.{ FloatValue, IntValue, NullValue, StringValue }
 import caliban.CalibanError
 import caliban.gateway.GatewayTestSupport._
-import caliban.gateway.GatewayWrapper.Event
+import caliban.gateway.PhaseHooks.Event
 import caliban.gateway.internal.composition.{ SchemaComposer, SchemaMapping }
 import caliban.introspection.adt.{ __Directive, __DirectiveLocation }
 import caliban.parsing.{ Parser, SourceMapper }

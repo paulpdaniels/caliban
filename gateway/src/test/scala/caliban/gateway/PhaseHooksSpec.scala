@@ -1,7 +1,7 @@
 package caliban.gateway
 
 import caliban.gateway.GatewayTestSupport._
-import caliban.gateway.GatewayWrapper.{ AdmissionKind, CacheResult, Event }
+import caliban.gateway.PhaseHooks.{ AdmissionKind, CacheResult, Event }
 import caliban.gateway.internal.OperationCache
 import caliban.gateway.internal.OperationCache.Weighted
 import caliban.parsing.adt.OperationType
@@ -13,14 +13,14 @@ import zio.{ Duration, Promise, Ref, Scope, ZIO }
 import zio.test.{ assertTrue, Spec, TestAspect, TestClock, TestEnvironment, ZIOSpecDefault }
 import zio.stream.ZStream
 
-object GatewayAspectSpec extends ZIOSpecDefault {
+object PhaseHooksSpec extends ZIOSpecDefault {
 
   final case class MetricQuery(value: String)
   final case class MetricSubscription(event: ZStream[Any, Throwable, Int])
 
   private val schema = "type Query { value: String! }"
 
-  def spec: Spec[TestEnvironment with Scope, Any] = suite("GatewayAspect")(
+  def spec: Spec[TestEnvironment with Scope, Any] = suite("PhaseHooksSpec")(
     test("idle subscriptions use dedicated lifetime and admission metrics") {
       for {
         opened           <- Promise.make[Nothing, Unit]
@@ -32,7 +32,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
                                   Some(MetricSubscription(ZStream.fromZIO(opened.succeed(())) *> ZStream.never))
                               )
                             )
-        runtime          <- (Gateway.compose(Subgraph.local("local", source)) @@ GatewayMetrics.aspect).interpreter
+        runtime          <- (Gateway.compose(Subgraph.local("local", source)) @@ GatewayMetrics.hooks).interpreter
         requestsBefore   <- counter("caliban_gateway_requests_total", "outcome", "success")
         admittedBefore   <- counter("caliban_gateway_subscription_admission_total", "result", "accepted")
         terminatedBefore <- counter("caliban_gateway_subscription_terminations_total", "reason", "cancelled")
@@ -64,7 +64,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
         )
       )
       for {
-        runtime        <- (Gateway.compose(Subgraph.local("local", source)) @@ GatewayMetrics.aspect).interpreter
+        runtime        <- (Gateway.compose(Subgraph.local("local", source)) @@ GatewayMetrics.hooks).interpreter
         setupBefore    <- counter("caliban_gateway_admission_total", "kind", "subscription_setup")
         workBefore     <- counter("caliban_gateway_admission_total", "kind", "subscription_event")
         requestsBefore <- counter("caliban_gateway_admission_total", "kind", "request")
@@ -110,7 +110,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
           Vector("products" -> 0),
         observed.lastOption.contains(Event.Completion),
         completed.size == observed.size,
-        completed.forall(_._2.outcome == GatewayWrapper.Outcome.Success),
+        completed.forall(_._2.outcome == PhaseHooks.Outcome.Success),
         headers.headOption.flatMap(_.get("x-gateway-wrapper")).contains("products")
       )
     },
@@ -126,7 +126,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
                                     ZIO.fail(OperationResolver.Rejection("Not found.", "PERSISTED_QUERY_NOT_FOUND"))
                                   )
                                 )
-                                .withPhaseHooks(hooks) @@ GatewayMetrics.aspect).interpreter
+                                .withPhaseHooks(hooks) @@ GatewayMetrics.hooks).interpreter
         before             <- histogram(
                                 "caliban_gateway_request_duration_seconds",
                                 "outcome"        -> "request_error",
@@ -143,9 +143,9 @@ object GatewayAspectSpec extends ZIOSpecDefault {
         routing             = completed.collect { case (Event.Routing, result) => result.outcome }
       } yield assertTrue(
         response.errors.map(_.msg) == List("Not found."),
-        routing == Vector(GatewayWrapper.Outcome.RequestError),
-        completed.lastOption.exists(_._2.outcome == GatewayWrapper.Outcome.RequestError),
-        !completed.exists(_._2.outcome == GatewayWrapper.Outcome.InternalError),
+        routing == Vector(PhaseHooks.Outcome.RequestError),
+        completed.lastOption.exists(_._2.outcome == PhaseHooks.Outcome.RequestError),
+        !completed.exists(_._2.outcome == PhaseHooks.Outcome.InternalError),
         after == before + 1L,
         sent.isEmpty
       )
@@ -172,7 +172,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
         response.errors.map(_.msg) == List("Gateway request timed out."),
         requests.isEmpty,
         observed.lastOption.contains(Event.Completion),
-        completed.lastOption.exists(_._2.outcome == GatewayWrapper.Outcome.Timeout)
+        completed.lastOption.exists(_._2.outcome == PhaseHooks.Outcome.Timeout)
       )
     },
     test("records cache outcomes through the metrics wrapper") {
@@ -194,7 +194,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
         started        <- Promise.make[Nothing, Unit]
         runtime        <- (Gateway
                             .compose(Subgraph.local("local", localGraph(started.succeed(()).unit *> ZIO.never)))
-                            .withConfig(_.withRequestTimeout(Duration.fromSeconds(1))) @@ GatewayMetrics.aspect).interpreter
+                            .withConfig(_.withRequestTimeout(Duration.fromSeconds(1))) @@ GatewayMetrics.hooks).interpreter
         requestBefore  <- counter("caliban_gateway_admission_total", "kind", "request")
         subgraphBefore <- counter("caliban_gateway_admission_total", "kind", "subgraph")
         requestsBefore <- counter("caliban_gateway_requests_total", "outcome", "error")
@@ -248,7 +248,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
       } yield assertTrue(
         response.errors.isEmpty,
         observed.map(event => event.operationType -> event.outcome) ==
-          Vector(Some(OperationType.Query) -> GatewayWrapper.Outcome.Success),
+          Vector(Some(OperationType.Query) -> PhaseHooks.Outcome.Success),
         observed.forall(event => event.document.isDefined && event.executionRequest.isDefined),
         scoped == observed,
         // Load-bearing: "scoped-out" precedes "scope-closed", i.e. the scope outlives the handler's own outgoing side.
@@ -276,7 +276,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
         requests <- remote.requests.get
       } yield assertTrue(
         response.errors.map(_.msg) == List("Gateway request timed out."),
-        events.map(_.outcome) == Vector(GatewayWrapper.Outcome.Timeout),
+        events.map(_.outcome) == Vector(PhaseHooks.Outcome.Timeout),
         events.forall(event => event.document.isEmpty && event.executionRequest.isEmpty),
         events.forall(_.operationType.isEmpty),
         sequence == Vector("direct-in", "direct-out"),
@@ -298,7 +298,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
         events   <- observed.get
         sequence <- order.get
       } yield assertTrue(
-        events.map(_.outcome) == Vector(GatewayWrapper.Outcome.Cancelled),
+        events.map(_.outcome) == Vector(PhaseHooks.Outcome.Cancelled),
         events.forall(_.document.isEmpty),
         sequence == Vector("direct-in", "direct-out")
       )
@@ -323,7 +323,7 @@ object GatewayAspectSpec extends ZIOSpecDefault {
         sent     <- remote.requests.get
       } yield assertTrue(
         response.errors.map(_.msg) == List("Not found."),
-        events.map(_.outcome) == Vector(GatewayWrapper.Outcome.RequestError),
+        events.map(_.outcome) == Vector(PhaseHooks.Outcome.RequestError),
         events.flatMap(_.errors.map(_.msg)) == Vector("Not found."),
         events.forall(event => event.document.isEmpty && event.executionRequest.isEmpty && event.operationType.isEmpty),
         sequence == Vector("direct-in", "direct-out"),
